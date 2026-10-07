@@ -9,6 +9,7 @@ import { cachedBrowserData } from "@/services/account-storage";
 import { ensureFileSession } from "@/services/api/file-session";
 import { apiGet } from "@/services/api/request";
 import { useUserStore } from "@/stores/use-user-store";
+import { queueFileUpload } from "@/app/(user)/canvas/utils/file-upload-queue";
 
 export type UploadedImage = {
     url: string;
@@ -226,7 +227,7 @@ export async function uploadRemoteImageToServer(url: string, filename: string): 
     const formData = new FormData();
     formData.append("file", blob, filename || "image-" + nanoid() + "." + imageExtension(blob.type));
     if (userProvider) formData.append("provider", JSON.stringify(toProviderPayload(userProvider)));
-    const uploadResponse = await fetch("/api/v1/files", { method: "POST", headers: { Authorization: "Bearer " + token }, body: formData });
+    const uploadResponse = await queueFileUpload(() => fetch("/api/v1/files", { method: "POST", headers: { Authorization: "Bearer " + token }, body: formData }));
     const payload = (await uploadResponse.json().catch(() => null)) as { code?: number; msg?: string; data?: UploadedImage } | null;
     if (!uploadResponse.ok || payload?.code !== 0 || !payload.data) throw new Error(payload?.msg || "服务端图片上传失败");
     const metadataUrl = URL.createObjectURL(blob);
@@ -319,7 +320,7 @@ async function maybeUploadImageToServer(blob: Blob, tokenOverride?: string): Pro
     const formData = new FormData();
     formData.append("file", blob, `image-${nanoid()}.${imageExtension(blob.type)}`);
     if (userProvider) formData.append("provider", JSON.stringify(toProviderPayload(userProvider)));
-    const response = await fetch("/api/v1/files", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+    const response = await queueFileUpload(() => fetch("/api/v1/files", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData }));
     const payload = (await response.json().catch(() => null)) as { code?: number; msg?: string; data?: UploadedImage } | null;
     if (!response.ok || payload?.code !== 0 || !payload.data) {
         if (!canUseGlobalProvider) return null;
@@ -602,4 +603,25 @@ function blobToDataUrl(blob: Blob) {
         reader.onerror = () => reject(new Error("读取图片失败"));
         reader.readAsDataURL(blob);
     });
+}
+
+// Display URLs only. Original URLs stay in node/asset data for downloads and references.
+export function imagePreviewUrl(url: string, displayWidth = 512, storageKey?: string) {
+    const id = storageKey?.startsWith("server:") && !storageKey.startsWith("server:webdav:") ? storageKey.slice(7) : "";
+    if (id) return `/api/files/${encodeURIComponent(id)}/content?w=${displayWidth > 600 ? 1024 : 512}`;
+    if (!url) return url;
+    try {
+        const parsed = new URL(url, "http://canvas.local");
+        if (!/^\/api\/files\/[^/]+\/content$/.test(parsed.pathname)) return url;
+        parsed.searchParams.set("w", displayWidth > 600 ? "1024" : "512");
+        return url.startsWith("/") ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.href;
+    } catch { return url; }
+}
+
+export async function resolveImagePreviewUrl(storageKey?: string, fallback = "", displayWidth = 512) {
+    if (storageKey?.startsWith("server:") && !storageKey.startsWith("server:webdav:")) {
+        await ensureFileSession();
+        return imagePreviewUrl(fallback, displayWidth, storageKey);
+    }
+    return imagePreviewUrl(await resolveImageUrl(storageKey, fallback), displayWidth);
 }

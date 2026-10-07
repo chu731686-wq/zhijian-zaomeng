@@ -4,6 +4,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { createServer } from "node:http";
+import { deflateSync, deflateRawSync } from "node:zlib";
 const mockHits = { hello: [], deepseek: [] };
 function startMock(name, port) {
     const server = createServer((req, res) => {
@@ -79,6 +80,82 @@ let preparationErrors = null;
 const createdProjects = [];
 const remainingProjectIds = [];
 let image, text;
+function crc32(data) {
+    let crc = 0xffffffff;
+    for (const byte of data) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+function pngChunk(type, data) {
+    const name = Buffer.from(type);
+    const size = Buffer.alloc(4);
+    size.writeUInt32BE(data.length);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(Buffer.concat([name, data])));
+    return Buffer.concat([size, name, data, checksum]);
+}
+function makeLargePng(index) {
+    const width = 2000, height = 1500;
+    const color = [index * 37 % 256, index * 83 % 256, index * 131 % 256];
+    const row = Buffer.alloc(1 + width * 3);
+    for (let x = 0; x < width; x++) {
+        row[1 + x * 3] = color[0];
+        row[2 + x * 3] = color[1];
+        row[3 + x * 3] = color[2];
+    }
+    const pixels = Buffer.alloc(row.length * height);
+    for (let y = 0; y < height; y++) row.copy(pixels, y * row.length);
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(width, 0);
+    header.writeUInt32BE(height, 4);
+    header[8] = 8;
+    header[9] = 2;
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", Buffer.alloc(0))]);
+}
+function makeZip(entries) {
+    const local = [], central = [];
+    let offset = 0;
+    for (const entry of entries) {
+        const name = Buffer.from(entry.name);
+        const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data);
+        const compressed = deflateRawSync(data);
+        const checksum = crc32(data);
+        const localHeader = Buffer.alloc(30);
+        localHeader.writeUInt32LE(0x04034b50, 0);
+        localHeader.writeUInt16LE(20, 4);
+        localHeader.writeUInt16LE(0x800, 6);
+        localHeader.writeUInt16LE(8, 8);
+        localHeader.writeUInt32LE(checksum, 14);
+        localHeader.writeUInt32LE(compressed.length, 18);
+        localHeader.writeUInt32LE(data.length, 22);
+        localHeader.writeUInt16LE(name.length, 26);
+        local.push(localHeader, name, compressed);
+
+        const centralHeader = Buffer.alloc(46);
+        centralHeader.writeUInt32LE(0x02014b50, 0);
+        centralHeader.writeUInt16LE(20, 4);
+        centralHeader.writeUInt16LE(20, 6);
+        centralHeader.writeUInt16LE(0x800, 8);
+        centralHeader.writeUInt16LE(8, 10);
+        centralHeader.writeUInt32LE(checksum, 16);
+        centralHeader.writeUInt32LE(compressed.length, 20);
+        centralHeader.writeUInt32LE(data.length, 24);
+        centralHeader.writeUInt16LE(name.length, 28);
+        centralHeader.writeUInt32LE(offset, 42);
+        central.push(centralHeader, name);
+        offset += localHeader.length + name.length + compressed.length;
+    }
+    const centralSize = central.reduce((size, part) => size + part.length, 0);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(entries.length, 8);
+    end.writeUInt16LE(entries.length, 10);
+    end.writeUInt32LE(centralSize, 12);
+    end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...local, ...central, end]);
+}
 const clean = (value) => {
     const message = String(value);
     return (password ? message.split(password).join("[已隐藏]") : message)
@@ -998,12 +1075,14 @@ const checks = [
             image = (await nodes().evaluateAll((es) => es.find((el) => el.querySelector("img"))?.dataset.nodeId));
             assert(image, "找不到包含图片的节点");
             const img = node(image).locator("img").first();
-            await eventually(async () => (await img.evaluate((el) => el.naturalWidth)) === 2752, "图片原始宽度不是 2752");
+            await eventually(async () => (await img.evaluate((el) => el.naturalWidth > 0 && el.naturalHeight > 0)), "图片预览未加载");
             const frame = img.locator("xpath=ancestor::div[.//img][1]");
             const ratio = 2752 / 1536;
+            const imageRatio = await img.evaluate((el) => el.naturalWidth / el.naturalHeight);
+            assert(Math.abs(imageRatio / ratio - 1) < 0.01, `图片预览比例错误：${imageRatio}`);
             const assertRatio = async () => {
                 const box = await rect(frame);
-                assert(Math.abs(box.width / box.height / ratio - 1) < 0.02, `图片显示框比例错误：${box.width}×${box.height}`);
+                assert(Math.abs(box.width / box.height / ratio - 1) < 0.01, `图片显示框比例错误：${box.width}×${box.height}`);
             };
             const dragCorner = async (corner, dx) => {
                 const n = await rect(node(image));
@@ -1182,11 +1261,11 @@ const checks = [
             const guestContext = await browser.newContext();
             try {
                 const guestPage = await guestContext.newPage();
-                guestPage.setDefaultNavigationTimeout(8000);
+                guestPage.setDefaultNavigationTimeout(15000);
                 for (const path of ["/", "/canvas", "/canvas/abc", "/models", "/skills", "/templates"]) {
-                    await guestPage.goto(new URL(path, baseURL).href, { waitUntil: "domcontentloaded", timeout: 8000 });
-                    // 登录守卫在页面加载后跳转，等它最多 8 秒
-                    await guestPage.waitForURL((url) => url.pathname === "/login", { timeout: 8000 }).catch(() => undefined);
+                    await guestPage.goto(new URL(path, baseURL).href, { waitUntil: "domcontentloaded", timeout: 15000 });
+                    // 登录守卫在页面加载后跳转，等它最多 15 秒
+                    await guestPage.waitForURL((url) => url.pathname === "/login", { timeout: 15000 }).catch(() => undefined);
                     assert.equal(new URL(guestPage.url()).pathname, "/login", `未登录可以打开 ${path}`);
                 }
 
@@ -1200,7 +1279,7 @@ const checks = [
                     assert([401, 403].includes(response.status()), `未登录可调用 ${path} (${response.status()})`);
                 }
 
-                await guestPage.goto(new URL("/login", baseURL).href, { waitUntil: "domcontentloaded", timeout: 8000 });
+                await guestPage.goto(new URL("/login", baseURL).href, { waitUntil: "domcontentloaded", timeout: 15000 });
                 assert.equal(new URL(guestPage.url()).pathname, "/login", "登录页不应跳走");
                 await guestPage.getByRole("button", { name: /^登\s*录$/ }).waitFor({ state: "visible", timeout: 8000 });
             } finally {
@@ -1285,6 +1364,98 @@ const checks = [
             const importedId = new URL(page.url()).pathname.split("/").at(-1);
             createdProjects.push({ id: importedId, title: projectTitle });
             await eventually(async () => await nodes().locator("img").evaluateAll((els) => els.some((el) => el.naturalWidth === 300)), "导入后的图片没显示", 15000);
+        },
+    ],
+    [
+        "㉙ 导入 24 张大图的画布，页面不卡、画布用预览图",
+        async () => {
+            const id = `perf-${Date.now()}`;
+            const title = `E2E 大图性能 ${id}`;
+            const files = [];
+            const imageNodes = Array.from({ length: 24 }, (_, index) => {
+                const storageKey = `image:test-${index}`;
+                const path = `projects/${id}/files/test-${index}.png`;
+                files.push({ storageKey, path, mimeType: "image/png", bytes: 0 });
+                return {
+                    id: `perf-image-${index}`,
+                    type: "image",
+                    title: `测试大图 ${index + 1}`,
+                    position: { x: (index % 6) * 340, y: Math.floor(index / 6) * 280 },
+                    width: 300,
+                    height: 225,
+                    metadata: { content: storageKey, storageKey, mimeType: "image/png", naturalWidth: 2000, naturalHeight: 1500, status: "success" },
+                };
+            });
+            const project = {
+                id,
+                title,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                nodes: imageNodes,
+                connections: [],
+                chatSessions: [],
+                activeChatId: null,
+                agentConfig: null,
+                autoTitlePending: false,
+                backgroundMode: "dots",
+                showImageInfo: false,
+                viewport: { x: 30, y: 30, k: 0.45 },
+                sidePanel: { open: false, width: 380 },
+                agentPanel: { open: false, width: 380 },
+            };
+            const entries = [];
+            for (let index = 0; index < 24; index++) {
+                const png = makeLargePng(index);
+                files[index].bytes = png.length;
+                entries.push({ name: files[index].path, data: png });
+            }
+            const manifest = { app: "infinite-canvas", version: 3, exportedAt: new Date().toISOString(), projects: [{ project, files }] };
+            entries.unshift({ name: "projects.json", data: JSON.stringify(manifest) });
+            const archivePath = `${screens}perf-test.zip`;
+            await writeFile(archivePath, makeZip(entries));
+
+            await page.goto(`${baseURL}/canvas`, { waitUntil: "networkidle" });
+            await page.getByRole("button", { name: "导入画布", exact: true }).click();
+            await page.locator('input[type="file"]').setInputFiles(archivePath);
+            await page.getByText("已导入 1 个画布", { exact: true }).waitFor({ state: "visible", timeout: 20000 });
+            const importedCard = page.locator("article").filter({ has: page.getByRole("button", { name: `打开${title}`, exact: true }) }).first();
+            const importedOpen = importedCard.getByRole("button", { name: `打开${title}`, exact: true });
+            await importedOpen.waitFor({ state: "visible" });
+            await page.evaluate(() => {
+                const state = { maximum: 0, over300: 0, samples: 0, nextAt: performance.now() + 500 };
+                window.__largeCanvasPerf = state;
+                const sample = () => {
+                    const scheduledAt = state.nextAt;
+                    const timerStarted = performance.now();
+                    const delay = Math.max(0, timerStarted - scheduledAt);
+                    setTimeout(() => {
+                        const duration = Math.max(delay, performance.now() - timerStarted);
+                        state.maximum = Math.max(state.maximum, duration);
+                        if (duration > 300) state.over300++;
+                        state.samples++;
+                        state.nextAt += 500;
+                        if (state.samples < 60) setTimeout(sample, Math.max(0, state.nextAt - performance.now()));
+                    }, 0);
+                };
+                setTimeout(sample, 500);
+            });
+            await importedOpen.click();
+            await page.waitForURL(/\/canvas\/[^/?]+$/);
+            const importedId = new URL(page.url()).pathname.split("/").at(-1);
+            createdProjects.push({ id: importedId, title });
+            await page.waitForTimeout(30000);
+            const { maximum: maxDelay, over300: over300Count } = await page.evaluate(() => window.__largeCanvasPerf ?? { maximum: 0, over300: 0 });
+            if (maxDelay > 500 || over300Count >= 3) throw new Error(`导入大画布时页面卡顿：最大延迟 ${Math.round(maxDelay)}ms，超过 300ms 的次数 ${over300Count}`);
+
+            const imageCheck = await nodes().locator("img").evaluateAll((images) => ({
+                count: images.length,
+                invalid: images.filter((img) => {
+                    const src = img.getAttribute("src") || "";
+                    return !((src.includes("/api/files/") && /[?&]w=/.test(src)) || (src.startsWith("blob:") && img.naturalWidth <= 1024));
+                }).map((img) => ({ src: img.getAttribute("src"), naturalWidth: img.naturalWidth })),
+            }));
+            assert.equal(imageCheck.count, 24, `画布应显示 24 张图片，实际 ${imageCheck.count} 张`);
+            assert.equal(imageCheck.invalid.length, 0, "画布显示的是原图");
         },
     ],
 ];

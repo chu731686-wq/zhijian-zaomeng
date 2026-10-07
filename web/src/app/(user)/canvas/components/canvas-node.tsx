@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { AlertCircle, Check, Circle, Clapperboard, ChevronRight, Image as ImageIcon, LoaderCircle, Maximize2, Music2, Pause, Play, RefreshCw, Star, Type, Settings2, Video, Users, MapPin, Package, Layers3 } from "lucide-react";
 
+import { imagePreviewUrl } from "@/services/image-storage";
 import styles from "./canvas-studio.module.css";
 import { useConfigStore, useEffectiveConfig, resolveModelForCapability, selectableModelsByCapability } from "@/stores/use-config-store";
 import { canvasGroupColors, canvasThemes } from "@/lib/canvas-theme";
@@ -15,6 +16,7 @@ import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textare
 import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
 import { isCanvasImageNodeType } from "../utils/canvas-panorama";
 import { GROUP_TITLE_HEIGHT } from "../utils/canvas-group";
+import { useLocalImagePreview } from "../utils/use-local-image-preview";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -22,6 +24,7 @@ const selectionBlue = "var(--accent)";
 const CanvasPanoramaViewer = dynamic(() => import("./canvas-panorama-viewer"), { ssr: false, loading: () => null });
 
 type CanvasNodeProps = {
+    readOnly?: boolean;
     data: CanvasNodeData;
     scale: number;
     isSelected: boolean;
@@ -64,6 +67,7 @@ type CanvasNodeProps = {
 };
 
 type NodeContentRendererProps = {
+    previewWidth?: number;
     node: CanvasNodeData;
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
     isSelected: boolean;
@@ -89,6 +93,7 @@ type NodeContentRendererProps = {
 };
 
 export const CanvasNode = React.memo(function CanvasNode({
+    readOnly = false,
     data,
     scale,
     isSelected,
@@ -344,6 +349,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     return (
         <div
             ref={nodeElementRef}
+            onClick={readOnly && (hasImageContent || hasVideoContent) ? () => onViewImage?.(data) : undefined}
             data-node-id={data.id}
             data-group-category={isGroup ? groupCategory : undefined}
             className={`node-element absolute flex select-none flex-col transition-shadow duration-200 ${isGroup ? "z-auto" : isSelected ? "z-50" : "z-10"} ${referenceSelectionState === "available" ? "cursor-pointer" : referenceSelectionState ? "cursor-not-allowed" : ""}`}
@@ -373,7 +379,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 if (event.button === 0 && referenceSelectionState === "available") onSelectReference?.(data.id);
             }}
             onContextMenu={(event) => {
-                if (referenceSelectionState) event.preventDefault();
+                if (readOnly || referenceSelectionState) event.preventDefault();
                 else onContextMenu(event, data.id);
             }}
         >
@@ -384,7 +390,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     style={{ height: GROUP_TITLE_HEIGHT, background: `${groupColor}38`, color: theme.node.text }}
                     onPointerDown={(event) => {
                         event.stopPropagation();
-                        if (event.button !== 0 || referenceSelectionState) return;
+                        if (readOnly || event.button !== 0 || referenceSelectionState) return;
                         event.preventDefault();
                         event.currentTarget.setPointerCapture(event.pointerId);
                         (onGroupPointerDown || onMouseDown)(event, data.id);
@@ -407,7 +413,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                             if (event.key === "Enter") finishTitleEditing();
                             if (event.key === "Escape") { setTitleDraft(data.title || ""); setIsEditingTitle(false); }
                         }}
-                    /> : <span className="min-w-0 flex-1 truncate" onDoubleClick={(event) => { event.stopPropagation(); setIsEditingTitle(true); }}>{data.title || "未命名分组"}</span>}
+                    /> : <span className="min-w-0 flex-1 truncate" onDoubleClick={(event) => { event.stopPropagation(); if (!readOnly) setIsEditingTitle(true); }}>{data.title || "未命名分组"}</span>}
                     <span className="shrink-0 opacity-75"> · {groupChildCount}</span>
                 </div> : null}
 
@@ -425,7 +431,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     gap: isGroup ? 0 : undefined,
                     boxShadow: !isGroup && (isActive || isGroupDropTarget) ? `0 0 0 1px ${selectionBlue}` : undefined,
                 }}
-                onMouseDown={(event) => onMouseDown(event, data.id)}
+                onMouseDown={(event) => { if (!readOnly) onMouseDown(event, data.id); }}
                 onDoubleClick={(event) => {
                     if (referenceSelectionState) {
                         event.preventDefault();
@@ -446,7 +452,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     }
                     if (data.type !== CanvasNodeType.Text) return;
                     event.stopPropagation();
-                    setIsEditingContent(true);
+                    if (!readOnly) setIsEditingContent(true);
                 }}
             >
                 {!isGroup ? <div className={styles.nodeHead}>
@@ -486,7 +492,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         title="双击修改节点名称"
                         onDoubleClick={(event) => {
                             event.stopPropagation();
-                            setIsEditingTitle(true);
+                            if (!readOnly) setIsEditingTitle(true);
                         }}
                     >
                         {data.title || "未命名节点"}
@@ -510,6 +516,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     {!isGroup ? (
                         <NodeContent
                             node={data}
+                            previewWidth={data.width * scale}
                             theme={theme}
                             isSelected={isSelected}
                             canSelectText={!referenceSelectionState}
@@ -526,11 +533,11 @@ export const CanvasNode = React.memo(function CanvasNode({
                             mentionReferences={mentionReferences}
                             onContentChange={onContentChange}
                             onStopEditing={() => setIsEditingContent(false)}
-                            onRetry={onRetry}
+                            onRetry={readOnly ? undefined : onRetry}
                             onViewImage={onViewImage}
-                            onToggleBatch={() => onToggleBatch?.(data.id)}
-                            onSetBatchPrimary={() => onSetBatchPrimary?.(data)}
-                            onMoveStart={(event) => onMouseDown(event, data.id)}
+                            onToggleBatch={readOnly ? undefined : () => onToggleBatch?.(data.id)}
+                            onSetBatchPrimary={readOnly ? undefined : () => onSetBatchPrimary?.(data)}
+                            onMoveStart={readOnly ? undefined : (event) => onMouseDown(event, data.id)}
                         />
                     ) : null}
                 </div>
@@ -539,7 +546,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     {[data.metadata?.size || (data.type === CanvasNodeType.Video ? "16:9" : data.type === CanvasNodeType.Text ? `${(data.metadata?.content || "").length} 字` : hasImageContent ? `${data.metadata?.naturalWidth || data.width} × ${data.metadata?.naturalHeight || data.height}` : "待设置"), data.metadata?.vquality || data.metadata?.quality, data.metadata?.seconds ? `${data.metadata.seconds}s` : data.metadata?.audioFormat, data.metadata?.model].filter(Boolean).join(" · ")}
                 </div> : null}
                 {status === "loading" ? <><div className={styles.progress}><span style={{ width: `${Math.max(4, Math.min(100, data.metadata?.progress || 0))}%` }} /></div><p className="text-[11px] text-running">正在生成{batchCount > 1 ? `镜头 · 共 ${batchCount} 个` : typeLabel}…</p></> : null}
-                {unavailable ? <div className="flex items-center justify-between gap-2 text-xs text-muted-text"><span>模型尚未接入</span><button type="button" className="min-h-9 rounded-lg bg-raised px-2 text-text hover:bg-hover" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openConfigDialog(false); }}>去设置</button></div> : null}
+                {!readOnly && unavailable ? <div className="flex items-center justify-between gap-2 text-xs text-muted-text"><span>模型尚未接入</span><button type="button" className="min-h-9 rounded-lg bg-raised px-2 text-text hover:bg-hover" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openConfigDialog(false); }}>去设置</button></div> : null}
 
                 {referenceSelectionState && (referenceSelectionState !== "available" || hovered) ? (
                     <div className="pointer-events-none absolute inset-0 z-[60] grid place-items-center rounded-[inherit]" style={{ background: `color-mix(in srgb, ${theme.canvas.background} ${referenceSelectionState === "target" ? 78 : referenceSelectionState === "disabled" ? 60 : 34}%, transparent)`, boxShadow: referenceSelectionState === "available" ? `inset 0 0 0 2px ${selectionBlue}` : undefined }}>
@@ -547,20 +554,20 @@ export const CanvasNode = React.memo(function CanvasNode({
                     </div>
                 ) : null}
 
-                {!referenceSelectionState ? <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} /> : null}
-                {!referenceSelectionState ? <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} /> : null}
-                {!referenceSelectionState ? <ResizeHandle corner="bottom-left" onMouseDown={handleResizeMouseDown} /> : null}
-                {!referenceSelectionState ? <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} /> : null}
+                {!readOnly && !referenceSelectionState ? <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} /> : null}
+                {!readOnly && !referenceSelectionState ? <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} /> : null}
+                {!readOnly && !referenceSelectionState ? <ResizeHandle corner="bottom-left" onMouseDown={handleResizeMouseDown} /> : null}
+                {!readOnly && !referenceSelectionState ? <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} /> : null}
             </div>
 
-            {!referenceSelectionState && !isGroup ? (
+            {!readOnly && !referenceSelectionState && !isGroup ? (
                 <>
                     <ConnectionHandleDot color={theme.types[data.type]} side="left" visible={true} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
                     <ConnectionHandleDot color={theme.types[data.type]} side="right" visible={data.type !== CanvasNodeType.Config} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
                 </>
             ) : null}
 
-            {!referenceSelectionState && showPanel && !isGroup && renderPanel && typeof document !== "undefined" ? createPortal(
+            {!readOnly && !referenceSelectionState && showPanel && !isGroup && renderPanel && typeof document !== "undefined" ? createPortal(
                 <div className={"fixed z-[140] max-h-[calc(100vh-88px)] max-w-[calc(100vw-24px)] -translate-x-1/2 overflow-y-auto " + (isCanvasImageNodeType(data.type) || data.type === CanvasNodeType.Video || data.type === CanvasNodeType.Audio ? "w-[622px]" : "w-[500px]")}
                     style={{ left: panelPosition.left, top: panelPosition.top }}>
                     {renderPanel(data)}
@@ -664,7 +671,7 @@ function ErrorContent({ node, theme, onRetry }: Pick<NodeContentRendererProps, "
     return (
         <div className="flex max-w-[260px] flex-col items-center gap-3 px-5 text-center">
             <div className="flex w-full items-start gap-1 text-xs leading-5 text-error"><AlertCircle className="mt-0.5 size-4 shrink-0" /><div className="min-w-0 text-left"><div>请求失败</div><div className="break-words" title={errorDetails}>{errorPreview}</div></div></div>
-            <button
+            {onRetry ? <button
                 type="button"
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition hover:scale-[1.02]"
                 style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
@@ -676,7 +683,7 @@ function ErrorContent({ node, theme, onRetry }: Pick<NodeContentRendererProps, "
             >
                 <RefreshCw className="size-3.5" />
                 重试
-            </button>
+            </button> : null}
         </div>
     );
 }
@@ -861,6 +868,7 @@ function ImageNodeContent(props: NodeContentRendererProps) {
     return (
         <ImageContent
             node={props.node}
+            previewWidth={props.previewWidth}
             isBatchRoot={props.isBatchRoot}
             batchCount={props.batchCount}
             batchExpanded={props.batchExpanded}
@@ -868,19 +876,22 @@ function ImageNodeContent(props: NodeContentRendererProps) {
             batchRecovering={props.batchRecovering}
             onToggleBatch={props.onToggleBatch}
             onSetBatchPrimary={props.onSetBatchPrimary}
-            media={props.isBatchRoot && props.batchPreviews?.length ? <div className="grid h-full grid-cols-2 content-center gap-1 p-1">{props.batchPreviews.slice(0, 4).map((frame, index) => <div key={index} className="relative aspect-video overflow-hidden rounded bg-bg"><img src={frame.src} alt={frame.title} draggable={false} className="pointer-events-none h-full w-full object-contain" /><span className="absolute bottom-0 left-0 rounded-tr bg-surface px-1 text-[11px] text-t-image">{String(index + 1).padStart(2, "0")}</span></div>)}</div> : undefined}
+            media={props.isBatchRoot && props.batchPreviews?.length ? <div className="grid h-full grid-cols-2 content-center gap-1 p-1">{props.batchPreviews.slice(0, 4).map((frame, index) => <div key={index} className="relative aspect-video overflow-hidden rounded bg-bg"><img src={imagePreviewUrl(frame.src)} alt={frame.title} draggable={false} loading="lazy" decoding="async" className="pointer-events-none h-full w-full object-contain" /><span className="absolute bottom-0 left-0 rounded-tr bg-surface px-1 text-[11px] text-t-image">{String(index + 1).padStart(2, "0")}</span></div>)}</div> : undefined}
         />
     );
 }
 
 function PanoramaNodeContent(props: NodeContentRendererProps) {
     const src = props.node.metadata?.content;
+    const source = imagePreviewUrl(src || "", props.previewWidth, props.node.metadata?.storageKey);
+    const displaySource = useLocalImagePreview(source);
     if (!src) return <ImageNodeContent {...props} />;
     const proxyGeneratedPanorama = Boolean(props.node.metadata?.imageTaskId || props.node.metadata?.imageTaskResultId) && !props.node.metadata?.storageKey;
 
     return (
         <ImageContent
             node={props.node}
+            previewWidth={props.previewWidth}
             isBatchRoot={props.isBatchRoot}
             batchCount={props.batchCount}
             batchExpanded={props.batchExpanded}
@@ -888,7 +899,7 @@ function PanoramaNodeContent(props: NodeContentRendererProps) {
             batchRecovering={props.batchRecovering}
             onToggleBatch={props.onToggleBatch}
             onSetBatchPrimary={props.onSetBatchPrimary}
-            media={<CanvasPanoramaViewer src={src} alt={props.node.title} proxyGeneratedPanorama={proxyGeneratedPanorama} expandOnDoubleClick={!props.isBatchRoot} onMoveStart={props.onMoveStart} onOpen={props.onViewImage ? () => props.onViewImage?.(props.node) : undefined} />}
+            media={<CanvasPanoramaViewer src={displaySource} alt={props.node.title} proxyGeneratedPanorama={proxyGeneratedPanorama} expandOnDoubleClick={!props.isBatchRoot} onMoveStart={props.onMoveStart} onOpen={props.onViewImage ? () => props.onViewImage?.(props.node) : undefined} />}
         />
     );
 }
@@ -944,7 +955,7 @@ function VideoNodeContent({ node, theme, isSelected, onViewImage }: NodeContentR
     };
     return (
         <div className="relative aspect-video max-h-full w-full overflow-hidden rounded-lg" style={{ background: theme.node.preview }}>
-            <video ref={videoRef} src={node.metadata.content} tabIndex={-1} playsInline className="h-full w-full object-contain outline-none" onLoadStart={() => { setVideoTime(0); setMediaDurationMs(0); }} onLoadedMetadata={(event) => setMediaDurationMs(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration * 1000 : 0)} onTimeUpdate={(event) => setVideoTime(event.currentTarget.currentTime)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onKeyDown={(event) => { if (isSelected && event.code === "Space") { event.preventDefault(); event.stopPropagation(); togglePlayback(); } }} />
+            <video ref={videoRef} preload="metadata" src={node.metadata.content} tabIndex={-1} playsInline className="h-full w-full object-contain outline-none" onLoadStart={() => { setVideoTime(0); setMediaDurationMs(0); }} onLoadedMetadata={(event) => setMediaDurationMs(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration * 1000 : 0)} onTimeUpdate={(event) => setVideoTime(event.currentTarget.currentTime)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onKeyDown={(event) => { if (isSelected && event.code === "Space") { event.preventDefault(); event.stopPropagation(); togglePlayback(); } }} />
             {mediaDurationMs > 0 ? <span className="pointer-events-none absolute left-2 top-2 z-20 flex h-7 items-center justify-center rounded-md px-2 text-[11px] font-medium opacity-70" style={controlStyle}>{new Date(mediaDurationMs).toISOString().slice(mediaDurationMs >= 3_600_000 ? 11 : 14, 19)}</span> : null}
             <button type="button" title={isPlaying ? "暂停" : "播放"} aria-label={isPlaying ? "暂停" : "播放"} className={`${controlClassName} left-2`} style={controlStyle} onClick={(event) => { event.stopPropagation(); togglePlayback(); }} onMouseDown={keepVideoFocus} onDoubleClick={(event) => event.stopPropagation()}>
                 {isPlaying ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
@@ -997,6 +1008,7 @@ function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
 
 function ImageContent({
     node,
+    previewWidth,
     isBatchRoot,
     batchCount,
     batchExpanded,
@@ -1007,6 +1019,7 @@ function ImageContent({
     media,
 }: {
     node: CanvasNodeData;
+    previewWidth?: number;
     isBatchRoot: boolean;
     batchCount: number;
     batchExpanded: boolean;
@@ -1017,6 +1030,8 @@ function ImageContent({
     media?: ReactNode;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const source = imagePreviewUrl(node.metadata!.content!, previewWidth, node.metadata?.storageKey);
+    const displaySource = useLocalImagePreview(source);
     const isBatchChild = Boolean(node.metadata?.batchRootId);
 
     return (
@@ -1024,7 +1039,9 @@ function ImageContent({
             <div className="h-full w-full overflow-hidden rounded-lg">
                 {media ?? (
                     <img
-                        src={node.metadata!.content!}
+                        src={displaySource}
+                        loading="lazy"
+                        decoding="async"
                         alt={node.title}
                         draggable={false}
                         onDragStart={(event) => event.preventDefault()}
@@ -1032,7 +1049,7 @@ function ImageContent({
                     />
                 )}
             </div>
-            {isBatchRoot ? (
+            {isBatchRoot && onToggleBatch ? (
                 <button
                     type="button"
                     className="absolute right-2.5 top-2.5 z-30 flex h-8 items-center justify-center gap-1 rounded-full border px-2.5 text-xs font-semibold transition hover:scale-[1.02]"
@@ -1049,7 +1066,7 @@ function ImageContent({
                     <ChevronRight className={`size-3.5 opacity-55 transition-transform ${batchExpanded ? "rotate-90" : ""}`} />
                 </button>
             ) : null}
-            {isBatchChild ? (
+            {isBatchChild && onSetBatchPrimary ? (
                 <button
                     type="button"
                     className="absolute right-3 top-3 z-30 flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium opacity-0 transition group-hover/batch:opacity-100 hover:scale-[1.02]"

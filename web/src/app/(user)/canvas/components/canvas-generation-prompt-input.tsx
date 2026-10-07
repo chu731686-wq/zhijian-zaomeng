@@ -1,5 +1,7 @@
 "use client";
 
+import { imagePreviewUrl } from "@/services/image-storage";
+
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Music2 } from "lucide-react";
@@ -173,7 +175,7 @@ export function CanvasGenerationPromptInput({ value, references, onChange, onSub
 }
 
 export function MaterialThumbnail({ reference, className }: { reference: GenerationReference; className?: string }) {
-    if (reference.kind === "image") return <img src={reference.previewUrl} alt="" className={className} />;
+    if (reference.kind === "image") return <img decoding="async" loading="lazy" src={imagePreviewUrl(reference.previewUrl || "")} alt="" className={className} />;
     if (reference.kind === "video") return <video src={reference.previewUrl} muted playsInline preload="metadata" className={className} />;
     return <span className={`grid place-items-center ${className || ""}`} style={{ background: "var(--hover)", color: "var(--t-audio)" }}><Music2 className="size-4" /></span>;
 }

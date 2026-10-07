@@ -1,5 +1,7 @@
 "use client";
 
+import { imagePreviewUrl } from "@/services/image-storage";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { Button, Image } from "antd";
@@ -242,7 +244,7 @@ function MentionMenu({ inputs, allInputs, activeIndex, theme, onSelect }: { inpu
 }
 
 function ResourcePreview({ input }: { input: NodeGenerationInput }) {
-    if (input.type === "image" && input.image) return <img src={input.image.dataUrl} alt="" className="size-9 rounded-md object-cover" />;
+    if (input.type === "image" && input.image) return <img decoding="async" loading="lazy" src={imagePreviewUrl(input.image.dataUrl, 512, input.image.storageKey)} alt="" className="size-9 rounded-md object-cover" />;
     if (input.type === "video" && input.video) return <video src={input.video.url} className="size-9 rounded-md bg-black object-cover" muted preload="metadata" />;
     const Icon = input.type === "audio" ? Music2 : input.type === "video" ? Video : input.type === "image" ? ImageIcon : FileText;
     return (

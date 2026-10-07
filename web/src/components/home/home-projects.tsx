@@ -6,7 +6,9 @@ import { App, Dropdown, Input, Modal } from "antd";
 import { ArrowRight, CheckCircle2, Circle, Copy, FolderOpen, LoaderCircle, MoreHorizontal, Pencil, Trash2, TriangleAlert } from "lucide-react";
 import { useCanvasStore, type CanvasProject } from "@/app/(user)/canvas/stores/use-canvas-store";
 import { CanvasNodeType } from "@/app/(user)/canvas/types";
-import { resolveImageUrl } from "@/services/image-storage";
+import { resolveImagePreviewUrl } from "@/services/image-storage";
+
+import { useProjectPublishing, PublishedBadge } from "./project-publishing";
 
 const sampleThumbnails = ["/samples/project-mystery.png", "/samples/project-romance.png", "/samples/project-scifi.png"];
 
@@ -30,7 +32,7 @@ export function ProjectThumbnail({ project, index = 0 }: { project: CanvasProjec
         let active = true;
         setUrl("");
         if (image)
-            void resolveImageUrl(storageKey, content || "")
+            void resolveImagePreviewUrl(storageKey, content || "")
                 .then((value) => {
                     if (active) setUrl(value);
                 })
@@ -64,6 +66,7 @@ function updatedLabel(value: string) {
 
 export function HomeProjects({ projects, hydrated, query, onBlank }: { projects: CanvasProject[]; hydrated: boolean; query: string; onBlank: () => void }) {
     const { modal, message } = App.useApp();
+    const { publishedIds, publishingItems } = useProjectPublishing();
     const [renaming, setRenaming] = useState<CanvasProject | null>(null);
     const [title, setTitle] = useState("");
     const renameProject = useCanvasStore((s) => s.renameProject);
@@ -127,7 +130,8 @@ export function HomeProjects({ projects, hydrated, query, onBlank }: { projects:
                         const summary = projectSummary(project);
                         const Icon = summary.status === "running" ? LoaderCircle : summary.status === "ok" ? CheckCircle2 : summary.status === "error" ? TriangleAlert : Circle;
                         return (
-                            <article className="home-project-card" key={project.id}>
+                            <article className="home-project-card relative" key={project.id}>
+                                {publishedIds.has(project.id) && <PublishedBadge />}
                                 <Link href={`/canvas/${project.id}`} className="home-project-open">
                                     <ProjectThumbnail project={project} index={index} />
                                     <div className="home-project-info">
@@ -150,6 +154,7 @@ export function HomeProjects({ projects, hydrated, query, onBlank }: { projects:
                                     placement="bottomRight"
                                     menu={{
                                         items: [
+                                            ...publishingItems(project),
                                             {
                                                 key: "rename",
                                                 icon: <Pencil size={16} />,

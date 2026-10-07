@@ -53,7 +53,7 @@ export function CanvasNodeReferenceBar({ references, onAdd, onRemove }: { refere
 }
 
 function ReferencePreview({ reference }: { reference: GenerationReference }) {
-    if (reference.kind === "image") return <img src={reference.previewUrl} alt={reference.label} className="block max-h-52 max-w-72 rounded-lg object-contain" />;
+    if (reference.kind === "image") return <img decoding="async" loading="lazy" src={reference.previewUrl} alt={reference.label} className="block max-h-52 max-w-72 rounded-lg object-contain" />;
     if (reference.kind === "video") return <video src={reference.previewUrl} className="block max-h-52 max-w-72 rounded-lg" controls playsInline preload="metadata" />;
     return <audio src={reference.previewUrl} className="w-72" controls />;
 }

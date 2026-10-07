@@ -50,6 +50,10 @@ func New() *gin.Engine {
 		handler.DeleteFile(c.Writer, c.Request, c.Param("id"))
 	})
 	v1 := api.Group("/v1", middleware.UserAuth)
+	v1.POST("/canvas/projects/:id/publish", func(c *gin.Context) { handler.PublishCanvasProject(c.Writer, c.Request, c.Param("id")) })
+	v1.GET("/showcase", gin.WrapF(handler.ShowcaseProjects))
+	v1.GET("/showcase/:id", func(c *gin.Context) { handler.ShowcaseProject(c.Writer, c.Request, c.Param("id")) })
+
 	v1.POST("/images/generations", gin.WrapF(handler.AIImagesGenerations))
 	v1.POST("/images/edits", gin.WrapF(handler.AIImagesEdits))
 	v1.POST("/responses", gin.WrapF(handler.AIResponses))

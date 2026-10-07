@@ -1,6 +1,7 @@
 package model
 
 type CanvasProject struct {
+	Published   bool   `json:"published" gorm:"not null;default:false;index"`
 	UserID      string `json:"userId" gorm:"primaryKey;index:idx_canvas_projects_user_deleted_updated,priority:1"`
 	ID          string `json:"id" gorm:"primaryKey"`
 	ProjectData string `json:"projectData"`

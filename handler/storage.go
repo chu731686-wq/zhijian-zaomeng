@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -132,10 +133,25 @@ func DeleteDirectFileRecord(w http.ResponseWriter, r *http.Request, id string) {
 
 // FileContent 获取文件内容。
 func FileContent(w http.ResponseWriter, r *http.Request, id string) {
-	object, err := service.AuthorizeStorageObject(r.Context(), id)
+	object, err := service.AuthorizeReadableStorageObject(r.Context(), id)
 	if err != nil {
 		FailWithStatus(w, http.StatusForbidden, "文件不存在或无权读取")
 		return
+	}
+	if width, ok := service.ParsePreviewWidth(r.URL.Query().Get("w")); ok && strings.HasPrefix(strings.ToLower(object.MimeType), "image/") {
+		if preview, err := service.ImagePreview(object, width); err == nil {
+			defer preview.Stream.Close()
+			data, err := io.ReadAll(preview.Stream)
+			if err == nil {
+				w.Header().Set("Content-Type", "image/jpeg")
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				if service.IsLocalStorageObject(object) {
+					w.Header().Set("Cache-Control", "private, no-store")
+				}
+				http.ServeContent(w, r, "preview.jpg", time.Time{}, bytes.NewReader(data))
+				return
+			}
+		}
 	}
 	if service.IsLocalStorageObject(object) {
 		file, err := service.OpenLocalStorageObject(object)
@@ -176,7 +192,7 @@ func FileContent(w http.ResponseWriter, r *http.Request, id string) {
 
 // FileInfo 获取文件元数据。
 func FileInfo(w http.ResponseWriter, r *http.Request, id string) {
-	object, err := service.AuthorizeStorageObject(r.Context(), id)
+	object, err := service.AuthorizeReadableStorageObject(r.Context(), id)
 	if err != nil {
 		FailWithStatus(w, http.StatusForbidden, "文件不存在或无权读取")
 		return

@@ -1,5 +1,7 @@
 "use client";
 
+import { imagePreviewUrl } from "@/services/image-storage";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { App, Button, Empty, Input, Modal, Pagination, Spin, Tabs, Tag } from "antd";
@@ -150,7 +152,7 @@ function LibraryTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => v
     );
 }
 
-function PickerCard({ title, kind, cover, loading, onClick }: { title: string; kind: string; cover: string; loading?: boolean; onClick: () => void }) {
+function PickerCard({ title, kind, cover, storageKey, loading, onClick }: { title: string; kind: string; cover: string; storageKey?: string; loading?: boolean; onClick: () => void }) {
     return (
         <button
             type="button"
@@ -159,7 +161,7 @@ function PickerCard({ title, kind, cover, loading, onClick }: { title: string; k
             disabled={loading}
         >
             {cover ? (
-                <img src={cover} alt={title} className="aspect-[4/3] w-full object-cover" />
+                <img decoding="async" loading="lazy" src={imagePreviewUrl(cover, 512, storageKey)} alt={title} className="aspect-[4/3] w-full object-cover" />
             ) : (
                 <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 p-3 text-center text-xs leading-5 text-stone-500 dark:bg-stone-800 dark:text-stone-400">{title}</div>
             )}
@@ -340,7 +342,7 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
             {visible.length ? (
                 <div className="grid grid-cols-4 gap-3">
                     {visible.map((asset) => (
-                        <PickerCard key={asset.id} title={asset.title} kind={asset.kind} cover={asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : "")} onClick={() => handleInsert(asset)} />
+                        <PickerCard key={asset.id} title={asset.title} kind={asset.kind} storageKey={asset.kind === "image" ? asset.data.storageKey : undefined} cover={asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : "")} onClick={() => handleInsert(asset)} />
                     ))}
                 </div>
             ) : (

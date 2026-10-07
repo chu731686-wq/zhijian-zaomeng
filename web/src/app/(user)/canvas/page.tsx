@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { App, Dropdown, Input } from "antd";
 import { Download, FileUp, FolderOpen, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useProjectPublishing, PublishedBadge } from "@/components/home/project-publishing";
 import { readZip } from "@/lib/zip";
 import { useCanvasStore, type CanvasProject } from "./stores/use-canvas-store";
 import { ProjectThumbnail, projectSummary } from "@/components/home/home-projects";
@@ -17,6 +18,7 @@ function updatedLabel(value: string) {
 
 export default function CanvasPage() {
     const { message, modal } = App.useApp();
+    const { publishedIds, publishingItems } = useProjectPublishing();
     const router = useRouter();
     const inputRef = useRef<HTMLInputElement>(null);
     const [query, setQuery] = useState("");
@@ -65,11 +67,13 @@ export default function CanvasPage() {
         </header>
         {!hydrated ? <div className="studio-empty-state"><p>正在加载项目…</p></div> : visible.length ? <div className="studio-project-grid">{visible.map((project, index) => {
             const summary = projectSummary(project);
-            return <article className="studio-project-card" key={project.id}>
+            return <article className="studio-project-card relative" key={project.id}>
+                {publishedIds.has(project.id) && <PublishedBadge />}
                 <button type="button" className="studio-project-preview" aria-label={`打开${project.title}`} onClick={() => openProject(project.id)}><ProjectThumbnail project={project} index={index} /></button>
                 <div className="studio-project-card-info"><button type="button" className="studio-project-title" onClick={() => openProject(project.id)}>{project.title}</button>
                     <p>{summary.detail} <span>·</span> {updatedLabel(project.updatedAt)}</p>
                     <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: [
+                        ...publishingItems(project),
                         { key: "open", label: "打开项目", onClick: () => openProject(project.id) },
                         { key: "export", label: "导出项目", icon: <Download size={16} />, onClick: () => void exportCanvasProjects([project], project.title) },
                         { key: "delete", label: "删除项目", danger: true, icon: <Trash2 size={16} />, onClick: () => remove(project) },

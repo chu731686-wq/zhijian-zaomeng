@@ -137,7 +137,7 @@ function PanoramaSurface({ src, alt, proxyGeneratedPanorama, viewerEntry }: Pano
     return (
         <div className="relative h-full w-full overflow-hidden">
             {status === "error" ? (
-                <img src={src} alt={alt} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain" />
+                <img src={src} alt={alt} draggable={false} loading="lazy" decoding="async" className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain" />
             ) : null}
             <div ref={containerRef} className="absolute inset-0 transition-opacity duration-200" style={{ opacity: status === "ready" ? 1 : 0 }} />
             {status === "loading" ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 text-xs text-white/80">正在加载全景图...</div> : null}
@@ -170,7 +170,7 @@ export default function CanvasPanoramaViewer({ src, alt, proxyGeneratedPanorama 
         active === null ? null : active ? (
             <PanoramaSurface key={surfaceKey} src={src} alt={alt} proxyGeneratedPanorama={proxyGeneratedPanorama} viewerEntry={viewerEntryRef.current} />
         ) : (
-            <img src={src} alt={alt} draggable={false} className="pointer-events-none h-full w-full select-none object-contain" />
+            <img src={src} alt={alt} draggable={false} loading="lazy" decoding="async" className="pointer-events-none h-full w-full select-none object-contain" />
         );
 
     if (immersive)

@@ -9,6 +9,7 @@ import { ensureFileSession } from "@/services/api/file-session";
 import { apiGet } from "@/services/api/request";
 import { autoSyncToCloud, canUseGlobalStorage, clearAutoSyncCache, getProxyUrl, loadUserStorageProvider, toProviderPayload, type StorageConfig, type UserWebDAVStorageProvider } from "@/services/image-storage";
 import { useUserStore } from "@/stores/use-user-store";
+import { queueFileUpload } from "@/app/(user)/canvas/utils/file-upload-queue";
 
 export type UploadedFile = { url: string; storageKey: string; bytes: number; mimeType: string; width?: number; height?: number; durationMs?: number };
 
@@ -89,7 +90,7 @@ async function uploadMediaBlobToServer(blob: Blob, filename: string, metadataUrl
     const formData = new FormData();
     formData.append("file", blob, filename);
     if (userProvider) formData.append("provider", JSON.stringify(toProviderPayload(userProvider)));
-    const response = await fetch("/api/v1/files", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+    const response = await queueFileUpload(() => fetch("/api/v1/files", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData }));
     const payload = (await response.json().catch(() => null)) as { code?: number; msg?: string; data?: UploadedFile } | null;
     if (!response.ok || payload?.code !== 0 || !payload.data) throw new Error(payload?.msg || "媒体同步失败");
     const meta = metadataUrl || payload.data.mimeType?.startsWith("video/") ? await readVideoMeta(metadataUrl || payload.data.url) : {};

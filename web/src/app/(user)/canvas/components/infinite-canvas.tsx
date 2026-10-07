@@ -7,6 +7,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import type { ViewportTransform } from "../types";
 
 type InfiniteCanvasProps = {
+    readOnly?: boolean;
     containerRef: React.RefObject<HTMLDivElement | null>;
     viewport: ViewportTransform;
     tool: "select" | "pan";
@@ -20,7 +21,7 @@ type InfiniteCanvasProps = {
     children: React.ReactNode;
 };
 
-export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
+export function InfiniteCanvas({ readOnly = false, containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const panState = useRef({
         isPanning: false,
@@ -92,7 +93,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
         const delta = -event.deltaY;
         const factor = Math.pow(1.1, delta / 100);
-        const newScale = Math.min(Math.max(viewport.k * factor, 0.25), 2);
+        const newScale = Math.min(Math.max(viewport.k * factor, readOnly ? 0.1 : 0.25), 2);
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
@@ -112,10 +113,11 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         const target = event.target instanceof Element ? event.target : null;
         // Title dragging belongs to the group, including when the pan tool or
         // Space is active. Do not capture or prevent its pointer event here.
-        if (event.button === 0 && target?.closest('[data-group-title="true"]')) return;
+        if (!readOnly && event.button === 0 && target?.closest('[data-group-title="true"]')) return;
         const textBody = target?.closest<HTMLElement>("[data-text-node-body]");
         const textNode = textBody?.closest<HTMLElement>("[data-node-id]");
-        if (textBody && textNode?.querySelector('[data-selected="true"]')) return;
+        if (!readOnly && textBody && textNode?.querySelector('[data-selected="true"]')) return;
+        if (readOnly && target?.closest("button,input,textarea,audio,video,[data-canvas-no-zoom]")) return;
         const temporaryTool = isSpacePressed;
         const activeTool = temporaryTool ? "pan" : tool;
         const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
@@ -242,9 +244,9 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             onPointerDownCapture={activeTool === "pan" ? handlePointerDown : undefined}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
-            onContextMenu={onContextMenu}
+            onContextMenu={readOnly ? (event) => event.preventDefault() : onContextMenu}
             onDragOver={(event) => event.preventDefault()}
-            onDrop={onDrop}
+            onDrop={readOnly ? undefined : onDrop}
         >
             <CanvasGrid viewport={viewport} mode={backgroundMode} />
             <div

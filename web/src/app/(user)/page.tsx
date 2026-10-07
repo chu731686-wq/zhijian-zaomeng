@@ -5,6 +5,7 @@ import { App } from "antd";
 import { nanoid } from "nanoid";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, FolderOpen, TriangleAlert } from "lucide-react";
+import { HomeShowcase } from "@/components/home/home-showcase";
 import { HomeComposer } from "@/components/home/home-composer";
 import { HomeTemplates } from "@/components/home/home-templates";
 import { HomeProjects, HomeQueue } from "@/components/home/home-projects";
@@ -214,6 +215,7 @@ function HomePageContent() {
                         {!assets.some((a) => `${a.title} ${a.tags.join(" ")}`.toLowerCase().includes(query.toLowerCase())) && <p className="studio-muted">没有找到相关素材</p>}
                     </section>
                 )}
+                <HomeShowcase query={query} />
                 <HomeQueue projects={projects} />
             </div>
             <AssetPickerModal

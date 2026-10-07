@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Clapperboard, Download, Eye, FileText, Group, Image as ImageIcon, Music2, Plus, Search, Settings2, Trash2, Type, Video, X } from "lucide-react";
 import { motion } from "motion/react";
 
+import { imagePreviewUrl } from "@/services/image-storage";
 import { AssetFormModal } from "@/components/assets/asset-form-modal";
 import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
 import { useCopyText } from "@/hooks/use-copy-text";
@@ -242,7 +243,7 @@ function CanvasNodesTab({ nodes, selectedNodeIds, onFocusNode, theme }: { nodes:
                                         className={cn("flex min-w-0 flex-1 items-center gap-3 py-2 pr-2 text-left", node.type === CanvasNodeType.Group && hasChildren ? "pl-0" : "pl-2")}
                                     >
                                         <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-md">
-                                            {hasImage ? <img src={node.metadata?.content} alt={node.title} className="size-full bg-bg object-contain" /> : <Icon className="size-5 opacity-60" />}
+                                            {hasImage ? <img decoding="async" src={imagePreviewUrl(node.metadata?.content || "", 512, node.metadata?.storageKey)} loading="lazy" alt={node.title} className="size-full bg-bg object-contain" /> : <Icon className="size-5 opacity-60" />}
                                         </span>
                                         <span className="min-w-0 flex-1 space-y-0.5">
                                             <span className="block truncate text-sm font-medium leading-snug">{node.title || NODE_TYPE_LABEL[node.type] || "未命名节点"}</span>
@@ -338,7 +339,7 @@ function AssetLibraryCard({ asset, theme, onDelete, onAssetDragStart, onAssetDra
             title={asset.title}
         >
             <div className="relative aspect-square overflow-hidden rounded-lg" style={{ background: "#0A0A0C" }}>
-                {asset.kind === "image" && mediaUrl ? <img src={mediaUrl} alt={asset.title} className="size-full object-contain" draggable={false} /> : null}
+                {asset.kind === "image" && mediaUrl ? <img decoding="async" src={imagePreviewUrl(mediaUrl, 512, asset.kind === "image" ? asset.data.storageKey : undefined)} loading="lazy" alt={asset.title} className="size-full object-contain" draggable={false} /> : null}
                 {asset.kind === "video" && mediaUrl ? <video src={`${mediaUrl}#t=0.1`} muted playsInline preload="metadata" className="size-full object-contain" /> : null}
                 {asset.kind === "audio" ? <span className="grid size-full place-items-center"><Music2 className="size-8 opacity-45" /></span> : null}
                 {asset.kind === "text" ? <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-3 text-xs leading-5 opacity-80">{asset.data.content}</div> : null}
@@ -418,7 +419,7 @@ function DraggableAssetCard({ theme, title, payload, kind, imageUrl, text, onAss
             className="group relative aspect-square cursor-grab overflow-hidden rounded-xl border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg active:cursor-grabbing"
             style={{ borderColor: theme.node.stroke, background: theme.node.preview }}
         >
-            {kind === "text" ? imageUrl ? <div className="flex size-full flex-col"><img src={imageUrl} alt={title} className="h-1/2 w-full object-contain" /><div className="h-1/2 overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{text}</div></div> : <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{text}</div> : kind === "audio" ? <span className="grid size-full place-items-center"><Music2 className="size-8 opacity-45" /></span> : imageUrl ? kind === "video" ? <video src={imageUrl + "#t=0.1"} muted playsInline preload="metadata" className="size-full object-contain" /> : <img src={imageUrl} alt={title} className="size-full object-contain" /> : <span className="grid size-full place-items-center"><FileText className="size-8 opacity-45" /></span>}
+            {kind === "text" ? imageUrl ? <div className="flex size-full flex-col"><img decoding="async" loading="lazy" src={imagePreviewUrl(imageUrl)} alt={title} className="h-1/2 w-full object-contain" /><div className="h-1/2 overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{text}</div></div> : <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{text}</div> : kind === "audio" ? <span className="grid size-full place-items-center"><Music2 className="size-8 opacity-45" /></span> : imageUrl ? kind === "video" ? <video src={imageUrl + "#t=0.1"} muted playsInline preload="metadata" className="size-full object-contain" /> : <img decoding="async" loading="lazy" src={imagePreviewUrl(imageUrl)} alt={title} className="size-full object-contain" /> : <span className="grid size-full place-items-center"><FileText className="size-8 opacity-45" /></span>}
         </div>
     );
 }
@@ -526,7 +527,7 @@ function PromptGroup({ category, keyword, open, theme, onToggle, onView, onInser
 function PromptRow({ item, theme, onView, onInsert }: { item: Prompt; theme: CanvasTheme; onView: () => void; onInsert: () => void }) {
     return (
         <div className="group relative flex items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
-            {item.coverUrl ? <img src={item.coverUrl} alt="" className="size-10 shrink-0 rounded-md object-cover" loading="lazy" /> : <span className="grid size-10 shrink-0 place-items-center rounded-md" style={{ background: theme.node.panel }}><FileText className="size-4 opacity-50" /></span>}
+            {item.coverUrl ? <img decoding="async" src={imagePreviewUrl(item.coverUrl)} alt="" className="size-10 shrink-0 rounded-md object-cover" loading="lazy" /> : <span className="grid size-10 shrink-0 place-items-center rounded-md" style={{ background: theme.node.panel }}><FileText className="size-4 opacity-50" /></span>}
             <button type="button" onClick={onView} className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-sm font-medium leading-snug">{item.title}</span>
                 <span className="mt-0.5 block truncate text-xs leading-snug opacity-50">{item.prompt}</span>

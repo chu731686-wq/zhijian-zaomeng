@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { App, Avatar, Dropdown, Modal, Popover } from "antd";
-import { Bell, ChevronRight, Cpu, HardDrive, Info, LogOut, Menu, Plus, Search, UserRound } from "lucide-react";
+import { Bell, ChevronRight, Cpu, HardDrive, Info, LogOut, Menu, Plus, Search, Shield, UserRound } from "lucide-react";
 import { navigationTools } from "@/constant/navigation-tools";
 import { useUserStore } from "@/stores/use-user-store";
 import { useConfigStore } from "@/stores/use-config-store";
@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (href === "/models") openConfig(false);
         else setPendingPage(href === "/templates" ? "templates" : "skills");
     };
-    const isEditor = /^\/canvas\/[^/]+/.test(pathname);
+    const isEditor = /^\/(canvas|showcase)\/[^/]+/.test(pathname);
     const name = user?.displayName || user?.username || "用户";
     const newProject = () => {
         if (!hydrated) return void message.info("画布数据正在加载，请稍后再试");
@@ -108,6 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                                         { key: "import-local", icon: <HardDrive size={16} />, label: "上传本机画布和素材", onClick: () => window.dispatchEvent(new Event(ACCOUNT_IMPORT_EVENT)) },
                                         { key: "storage", icon: <HardDrive size={16} />, label: "存储", onClick: () => openConfig(false) },
                                         { key: "models", icon: <Cpu size={16} />, label: "模型与接口", onClick: () => router.push("/models") },
+                                        ...(user?.role === "admin" ? [{ key: "admin", icon: <Shield size={16} />, label: "管理后台", onClick: () => router.push("/admin") }] : []),
                                         { key: "about", icon: <Info size={16} />, label: "关于", onClick: () => setAboutOpen(true) },
                                         { type: "divider" },
                                         { key: "logout", icon: <LogOut size={16} />, label: "退出", disabled: !user, onClick: logout },

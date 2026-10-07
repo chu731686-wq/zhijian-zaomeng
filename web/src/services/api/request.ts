@@ -69,13 +69,18 @@ async function apiRequest<T>(config: { url: string; method: "GET" | "POST" | "DE
         throw new Error("接口连接失败，请确认后端服务已启动");
     }
 
-    const result = response.data;
+    const result: unknown = response.data;
+    if (response.status < 200 || response.status >= 300) {
+        const payload = result && typeof result === "object" ? result as ApiResponse<T> : null;
+        throw new Error(payload?.msg || "请求失败");
+    }
+    if (result === "" || result === undefined || result === null) return undefined as T;
     if (!result || typeof result !== "object") {
         throw new Error(response.status === 404 ? "接口不存在，请确认后端服务已启动" : "接口返回异常，请稍后重试");
     }
 
     const payload = result as ApiResponse<T>;
-    if (response.status < 200 || response.status >= 300 || payload.code !== 0) {
+    if (payload.code !== 0) {
         throw new Error(payload.msg || "请求失败");
     }
 

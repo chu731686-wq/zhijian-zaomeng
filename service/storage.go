@@ -489,6 +489,10 @@ func DownloadStorageObject(id string, rangeHeader string) (DownloadedStorageObje
 		return DownloadedStorageObject{}, err
 	}
 
+	return downloadStorageObjectValue(object, rangeHeader)
+}
+
+func storageProviderForObject(object model.StorageObject) (model.StorageProvider, bool) {
 	providers := []model.StorageProvider{}
 	if object.CreatedBy != "" && object.CreatedBy != "anonymous" {
 		if config, found, loadErr := repository.GetUserConfig(object.CreatedBy); loadErr == nil && found {
@@ -498,10 +502,25 @@ func DownloadStorageObject(id string, rangeHeader string) (DownloadedStorageObje
 	if settings, loadErr := repository.GetSettings(); loadErr == nil {
 		providers = append(providers, normalizePrivateStorageSetting(settings.Private.Storage).Providers...)
 	}
-	if provider, ok := findStorageProviderForObject(object, providers); ok && storageProviderConfigured(provider) {
+	return findStorageProviderForObject(object, providers)
+}
+
+func downloadStorageObjectValue(object model.StorageObject, rangeHeader string) (DownloadedStorageObject, error) {
+	if provider, ok := storageProviderForObject(object); ok && storageProviderConfigured(provider) {
 		var stream storageObjectStream
 		var readErr error
 		switch provider.Type {
+		case model.StorageProviderTypeLocal:
+			file, err := OpenLocalStorageObject(object)
+			if err != nil {
+				return DownloadedStorageObject{}, err
+			}
+			info, err := file.Stat()
+			if err != nil {
+				file.Close()
+				return DownloadedStorageObject{}, err
+			}
+			return DownloadedStorageObject{Object: object, Stream: file, ContentLength: info.Size(), StatusCode: http.StatusOK}, nil
 		case model.StorageProviderTypeS3:
 			stream, readErr = getS3ObjectStream(provider, object.ObjectKey, rangeHeader)
 		case model.StorageProviderTypeWebDAV:

@@ -142,3 +142,29 @@ func CleanupDeletedCanvasProjects(before string) error {
 		before,
 	).Delete(&model.CanvasProject{}).Error
 }
+
+// ShowcaseCanvasProjects only exposes live projects belonging to administrators.
+func ShowcaseCanvasProjects() ([]model.CanvasProject, error) {
+	db, err := DB()
+	if err != nil {
+		return nil, err
+	}
+	var projects []model.CanvasProject
+	err = db.Table("canvas_projects").Select("canvas_projects.*").
+		Joins("JOIN users ON users.id = canvas_projects.user_id").
+		Where("canvas_projects.published = ? AND canvas_projects.deleted_at = '' AND users.role = ? AND users.status = ?", true, model.UserRoleAdmin, model.UserStatusActive).
+		Order("canvas_projects.updated_at DESC").Find(&projects).Error
+	return projects, err
+}
+
+func SetCanvasProjectPublished(userID, id string, published bool) error {
+	db, err := DB()
+	if err != nil {
+		return err
+	}
+	var project model.CanvasProject
+	if err := db.Where("user_id = ? AND id = ? AND deleted_at = ''", userID, id).First(&project).Error; err != nil {
+		return errors.New("画布项目不存在")
+	}
+	return db.Model(&project).Update("published", published).Error
+}

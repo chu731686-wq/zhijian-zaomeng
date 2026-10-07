@@ -1,5 +1,7 @@
 "use client";
 
+import { imagePreviewUrl } from "@/services/image-storage";
+
 import { Copy, Download, PencilLine, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Card, Drawer, Empty, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
@@ -273,7 +275,7 @@ function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete }: { as
             cover={
                 <button type="button" className="block w-full text-left" onClick={onOpen}>
                     {cover ? (
-                        <img src={cover} alt={asset.title} className="aspect-[4/3] w-full object-cover" />
+                        <img loading="lazy" src={imagePreviewUrl(cover, 512, asset.kind === "image" ? asset.data.storageKey : undefined)} alt={asset.title} className="aspect-[4/3] w-full object-cover" />
                     ) : asset.kind === "video" ? (
                         <video src={asset.data.url + "#t=0.1"} muted playsInline preload="metadata" className="aspect-[4/3] w-full object-cover" />
                     ) : (
