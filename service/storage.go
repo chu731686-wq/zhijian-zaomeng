@@ -780,7 +780,8 @@ func newS3RequestWithQuery(method string, provider model.StorageProvider, object
 		return nil, err
 	}
 	escapedKey := strings.TrimLeft(objectKey, "/")
-	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/" + provider.Bucket + "/" + escapedKey
+	basePath := strings.TrimRight(endpoint.Path, "/")
+	endpoint.Path = basePath + "/" + provider.Bucket + "/" + escapedKey
 	if query != nil {
 		endpoint.RawQuery = query.Encode()
 	}
@@ -791,11 +792,12 @@ func newS3RequestWithQuery(method string, provider model.StorageProvider, object
 	if contentLength > 0 {
 		request.ContentLength = contentLength
 	}
-	signS3Request(request, provider, escapedKey)
+	signS3Request(request, provider, basePath, escapedKey)
 	return request, nil
 }
 
-func signS3Request(request *http.Request, provider model.StorageProvider, objectKey string) {
+// basePath 是端点自带的路径前缀（如 Supabase 的 /storage/v1/s3），签名时必须一并计入。
+func signS3Request(request *http.Request, provider model.StorageProvider, basePath string, objectKey string) {
 	nowTime := time.Now().UTC()
 	amzDate := nowTime.Format("20060102T150405Z")
 	dateStamp := nowTime.Format("20060102")
@@ -807,7 +809,7 @@ func signS3Request(request *http.Request, provider model.StorageProvider, object
 	request.Header.Set("Host", request.URL.Host)
 	request.Header.Set("X-Amz-Date", amzDate)
 	request.Header.Set("X-Amz-Content-Sha256", payloadHash)
-	canonicalURI := "/" + provider.Bucket + "/" + strings.ReplaceAll(url.PathEscape(objectKey), "%2F", "/")
+	canonicalURI := basePath + "/" + provider.Bucket + "/" + strings.ReplaceAll(url.PathEscape(objectKey), "%2F", "/")
 	canonicalHeaders := "host:" + request.URL.Host + "\n" + "x-amz-content-sha256:" + payloadHash + "\n" + "x-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
 	canonicalRequest := request.Method + "\n" + canonicalURI + "\n" + request.URL.RawQuery + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash

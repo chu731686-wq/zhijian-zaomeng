@@ -1,22 +1,28 @@
 services:
   - type: web
-    name: infinite-canvas
+    name: zhijian-zaomeng
     runtime: docker
     plan: free
-    autoDeployTrigger: off
+    region: singapore
+    autoDeployTrigger: commit
     healthCheckPath: /api/health
     envVars:
       - key: ADMIN_USERNAME
         value: admin
+      # 以下两项创建时在 Render 页面上自己填，不写进代码
       - key: ADMIN_PASSWORD
         sync: false
+      - key: DATABASE_DSN
+        sync: false
       - key: JWT_SECRET
+        generateValue: true
+      - key: CONFIG_ENCRYPTION_KEY
         generateValue: true
       - key: JWT_EXPIRE_HOURS
         value: 168
       - key: PORT
         value: 3000
       - key: STORAGE_DRIVER
-        value: sqlite
-      - key: DATABASE_DSN
-        value: data/infinite-canvas.db
+        value: postgres
+      - key: REGISTRATION_INVITE_REQUIRED
+        value: "false"
