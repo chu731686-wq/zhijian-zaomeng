@@ -305,6 +305,11 @@ function LoginContent() {
                     </div>
                 )}
                 <div hidden>{linuxDoEnabled ? <Button href={`/api/auth/linux-do/authorize?redirect=${encodeURIComponent(redirect)}`}>使用 Linux.do 登录</Button> : null}</div>
+                <p className="mt-6 border-t border-line pt-4 text-center text-caption text-muted-text">
+                    <a href="/privacy" className="transition-colors hover:text-text">隐私政策</a>
+                    <span className="px-2" aria-hidden="true">·</span>
+                    <a href="/terms" className="transition-colors hover:text-text">服务条款</a>
+                </p>
             </section>
         </main>
     );
