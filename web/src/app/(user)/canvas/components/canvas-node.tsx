@@ -25,6 +25,7 @@ const CanvasPanoramaViewer = dynamic(() => import("./canvas-panorama-viewer"), {
 
 type CanvasNodeProps = {
     readOnly?: boolean;
+    onReadOnlySelect?: (node: CanvasNodeData) => void;
     data: CanvasNodeData;
     scale: number;
     isSelected: boolean;
@@ -94,6 +95,7 @@ type NodeContentRendererProps = {
 
 export const CanvasNode = React.memo(function CanvasNode({
     readOnly = false,
+    onReadOnlySelect,
     data,
     scale,
     isSelected,
@@ -349,7 +351,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     return (
         <div
             ref={nodeElementRef}
-            onClick={readOnly && (hasImageContent || hasVideoContent) ? () => onViewImage?.(data) : undefined}
+            onClick={readOnly ? () => onReadOnlySelect ? onReadOnlySelect(data) : (hasImageContent || hasVideoContent) && onViewImage?.(data) : undefined}
             data-node-id={data.id}
             data-group-category={isGroup ? groupCategory : undefined}
             className={`node-element absolute flex select-none flex-col transition-shadow duration-200 ${isGroup ? "z-auto" : isSelected ? "z-50" : "z-10"} ${referenceSelectionState === "available" ? "cursor-pointer" : referenceSelectionState ? "cursor-not-allowed" : ""}`}
@@ -567,9 +569,9 @@ export const CanvasNode = React.memo(function CanvasNode({
                 </>
             ) : null}
 
-            {!readOnly && !referenceSelectionState && showPanel && !isGroup && renderPanel && typeof document !== "undefined" ? createPortal(
+            {!referenceSelectionState && showPanel && !isGroup && renderPanel && typeof document !== "undefined" ? createPortal(
                 <div className={"fixed z-[140] max-h-[calc(100vh-88px)] max-w-[calc(100vw-24px)] -translate-x-1/2 overflow-y-auto " + (isCanvasImageNodeType(data.type) || data.type === CanvasNodeType.Video || data.type === CanvasNodeType.Audio ? "w-[622px]" : "w-[500px]")}
-                    style={{ left: panelPosition.left, top: panelPosition.top }}>
+                    style={{ left: readOnly ? Math.max(Math.min(311, window.innerWidth / 2), Math.min(panelPosition.left, window.innerWidth - Math.min(311, window.innerWidth / 2))) : panelPosition.left, top: readOnly ? Math.max(64, Math.min(panelPosition.top, window.innerHeight - 360)) : panelPosition.top }}>
                     {renderPanel(data)}
                 </div>,
                 document.body,

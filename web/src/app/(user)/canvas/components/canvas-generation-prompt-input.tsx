@@ -15,11 +15,12 @@ type Props = {
     className?: string;
     style?: CSSProperties;
     placeholder?: string;
+    readOnly?: boolean;
 };
 type Mention = { query: string; range: Range; left: number; top: number };
 const kindNames = { image: "图片", video: "视频", audio: "音频" };
 
-export function CanvasGenerationPromptInput({ value, references, onChange, onSubmit, className, style, placeholder }: Props) {
+export function CanvasGenerationPromptInput({ value, references, onChange, onSubmit, className, style, placeholder, readOnly = false }: Props) {
     const editorRef = useRef<HTMLDivElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const lastValue = useRef<string | null>(null);
@@ -122,15 +123,16 @@ export function CanvasGenerationPromptInput({ value, references, onChange, onSub
 
     return <div className="relative w-full">
         {!value && placeholder ? <div className="pointer-events-none absolute left-3 top-2 text-sm leading-5" style={{ color: "var(--muted)" }}>{placeholder}</div> : null}
-        <div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="生成提示词" aria-autocomplete="list" aria-expanded={Boolean(mention)} aria-controls={mention ? menuId : undefined} aria-activedescendant={mention && candidates[activeIndex] ? `${menuId}-${activeIndex}` : undefined}
-            className={`${className || ""} cursor-text overflow-y-auto whitespace-pre-wrap break-words outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]`} style={style}
+        <div ref={editorRef} contentEditable={!readOnly} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-readonly={readOnly || undefined} aria-label={readOnly ? "提示词（只读）" : "生成提示词"} aria-autocomplete={readOnly ? undefined : "list"} aria-expanded={readOnly ? undefined : Boolean(mention)} aria-controls={readOnly || !mention ? undefined : menuId} aria-activedescendant={readOnly || !mention || !candidates[activeIndex] ? undefined : `${menuId}-${activeIndex}`}
+            className={`${className || ""} ${readOnly ? "cursor-text select-text" : "cursor-text"} overflow-y-auto whitespace-pre-wrap break-words outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]`} style={style}
             onPointerDown={(event) => event.stopPropagation()}
-            onInput={() => { if (!composing.current) { emit(); syncMention(); } }}
-            onCompositionStart={() => { composing.current = true; setMention(null); }}
-            onCompositionEnd={() => { composing.current = false; emit(); syncMention(); }}
+            onInput={() => { if (!readOnly && !composing.current) { emit(); syncMention(); } }}
+            onCompositionStart={() => { if (!readOnly) { composing.current = true; setMention(null); } }}
+            onCompositionEnd={() => { if (!readOnly) { composing.current = false; emit(); syncMention(); } }}
             onBlur={() => setMention(null)}
-            onPointerUp={syncMention}
+            onPointerUp={readOnly ? undefined : syncMention}
             onPaste={(event) => {
+                if (readOnly) return;
                 event.preventDefault();
                 const selection = window.getSelection();
                 if (!selection?.rangeCount) return;
@@ -145,6 +147,7 @@ export function CanvasGenerationPromptInput({ value, references, onChange, onSub
             }}
             onKeyDown={(event) => {
                 event.stopPropagation();
+                if (readOnly) return;
                 if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (mention) {
                     if (event.key === "Escape") { event.preventDefault(); setMention(null); return; }

@@ -106,10 +106,10 @@ export async function syncMediaReferences<T>(input: T, token: string): Promise<T
         const key = typeof record.storageKey === "string" ? record.storageKey : "";
         let uploaded: SyncedMedia | null = null;
         if (key && !key.startsWith("server:")) uploaded = await syncSource(key, kind);
-        const mediaKind = typeof record.dataUrl === "string" || typeof record.imageUrl === "string" || ["image", "panorama", "video", "audio"].includes(kind) || typeof record.mimeType === "string" && /^(image|video|audio)\//.test(record.mimeType);
+        const mediaKind = typeof record.dataUrl === "string" || typeof record.imageUrl === "string" || ["image", "image_url", "panorama", "video", "audio"].includes(kind) || typeof record.mimeType === "string" && /^(image|video|audio)\//.test(record.mimeType);
         if (!key && mediaKind) {
             const source = [record.content, record.dataUrl, record.url, record.imageUrl].find((item) => typeof item === "string" && /^(data:|blob:|https?:\/\/)/.test(item));
-            if (typeof source === "string") uploaded = await syncSource(source, kind === "panorama" ? "image" : kind);
+            if (typeof source === "string") uploaded = await syncSource(source, kind === "panorama" || kind === "image_url" ? "image" : kind);
         }
         if (uploaded) {
             result.storageKey = uploaded.storageKey;

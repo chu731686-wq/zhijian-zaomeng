@@ -75,6 +75,7 @@ let browser,
     page,
     projectId,
     projectTitle,
+    currentCheckName = null,
     navigationStarted = false;
 let preparationErrors = null;
 const createdProjects = [];
@@ -308,6 +309,7 @@ async function run(name, action, resetFirst = false) {
     const started = Date.now();
     const errorsBefore = runtimeErrors.length;
     const result = { name, status: "passed" };
+    currentCheckName = name;
     try {
         if (resetFirst) await reset();
         await action();
@@ -316,10 +318,10 @@ async function run(name, action, resetFirst = false) {
         result.status = error instanceof Skip ? "skipped" : "failed";
         result.reason = clean(error.message);
     }
-    if (runtimeErrors.length > errorsBefore) {
+    const checkErrors = runtimeErrors.slice(errorsBefore).filter((error) => error.type !== "badscript");
+    if (checkErrors.length) {
         result.status = "failed";
-        result.reason = `页面报错：${runtimeErrors
-            .slice(errorsBefore)
+        result.reason = `页面报错：${checkErrors
             .map((e) => e.message)
             .join("；")}`;
     }
@@ -334,6 +336,7 @@ async function run(name, action, resetFirst = false) {
     result.durationMs = Date.now() - started;
     results.push(result);
     console.log(`${result.status === "failed" ? "❌" : "✅"} ${name}${result.status === "skipped" ? `（跳过：${result.reason}）` : result.reason ? `（${result.reason}）` : ""}`);
+    currentCheckName = null;
     return result.status === "passed";
 }
 
@@ -1458,6 +1461,131 @@ const checks = [
             assert.equal(imageCheck.invalid.length, 0, "画布显示的是原图");
         },
     ],
+    [
+        "㉔ 作品展示页：只读、提示词、资产、聊天记录",
+        async () => {
+            const expectedPrompt = "展示页图片提示词测试";
+            const sessionId = `e2e-showcase-${Date.now()}`;
+            const sourceImage = `${sessionId}-image-a`;
+            const image = `${sessionId}-image-b`;
+            const textNode = `${sessionId}-text`;
+            const now = new Date().toISOString();
+            const tinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII=";
+            const project = {
+                id: sessionId,
+                title: "作品展示回归画布",
+                createdAt: now,
+                updatedAt: now,
+                nodes: [
+                    {
+                        id: sourceImage,
+                        type: "image",
+                        title: "showcase-reference.png",
+                        position: { x: 220, y: 160 },
+                        width: 300,
+                        height: 200,
+                        metadata: { content: tinyPng, prompt: "展示页参考图", mimeType: "image/png", naturalWidth: 1, naturalHeight: 1 },
+                    },
+                    {
+                        id: image,
+                        type: "image",
+                        title: "展示页目标图片",
+                        position: { x: 1020, y: 160 },
+                        width: 300,
+                        height: 200,
+                        metadata: {
+                            prompt: expectedPrompt,
+                            model: "gpt-image-1",
+                            size: "1:1",
+                            quality: "高清",
+                            count: 1,
+                            status: "idle",
+                        },
+                    },
+                    {
+                        id: textNode,
+                        type: "text",
+                        title: "展示页文本节点",
+                        position: { x: 220, y: 420 },
+                        width: 240,
+                        height: 120,
+                        metadata: { content: "作品展示回归文本" },
+                    },
+                ],
+                connections: [
+                    { id: `${sessionId}-connection-ab`, fromNodeId: sourceImage, toNodeId: image },
+                ],
+                chatSessions: [{
+                    id: sessionId,
+                    title: "作品展示回归对话",
+                    messages: [
+                        { id: `${sessionId}-user`, role: "user", text: "展示页用户测试句" },
+                        { id: `${sessionId}-assistant`, role: "assistant", text: "展示页助手测试句" },
+                    ],
+                    agentState: { phase: "complete", approvedNodeIds: [], referenceNodeIds: [], pendingTaskIds: [], completedTaskIds: [] },
+                    protocolMessages: [],
+                    createdAt: now,
+                    updatedAt: now,
+                }],
+                activeChatId: sessionId,
+                agentConfig: null,
+                autoTitlePending: false,
+                backgroundMode: "dots",
+                showImageInfo: false,
+                viewport: { x: 0, y: 0, k: 1 },
+                sidePanel: { open: true, width: 280 },
+                agentPanel: { open: false, width: 380 },
+            };
+
+            const showcaseId = `e2e-showcase-${Date.now()}`;
+            await page.route(`**/api/v1/showcase/${showcaseId}`, async (route) => {
+                assert.equal(route.request().method(), "GET", "作品展示页应只读取展示接口");
+                await route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({ code: 0, msg: "ok", data: { project, ownerName: "admin" } }),
+                });
+            });
+            await page.goto(`${baseURL}/showcase/${showcaseId}`, { waitUntil: "domcontentloaded" });
+            await page.getByRole("button", { name: "资产", exact: true }).waitFor({ state: "visible" });
+            await page.getByRole("button", { name: "助手聊天记录", exact: true }).waitFor({ state: "visible" });
+            assert.equal(await page.getByRole("button", { name: /生成/ }).count(), 0, "作品展示页出现了生成按钮");
+
+            await page.locator(`[data-node-id="${image}"]`).click();
+            const promptBox = page.getByRole("textbox", { name: "提示词（只读）", exact: true });
+            await promptBox.waitFor({ state: "visible" });
+            assert.equal(await promptBox.getAttribute("aria-readonly"), "true", "提示词框缺少只读属性");
+            assert.notEqual(await promptBox.getAttribute("contenteditable"), "true", "提示词框仍可编辑");
+            assert((await promptBox.innerText()).includes(expectedPrompt), "只读提示词框未显示节点提示词");
+            assert.equal(await page.getByRole("textbox", { name: "生成提示词", exact: true }).count(), 0, "作品展示页出现了编辑态生成提示词框");
+            const copyPromptButton = page.getByRole("button", { name: "复制提示词", exact: true });
+            await copyPromptButton.waitFor({ state: "visible" });
+            await copyPromptButton.click();
+            await page.getByText("已复制", { exact: true }).waitFor({ state: "visible" });
+            const referenceBar = page.getByText("参考资产", { exact: true }).locator("xpath=..");
+            await referenceBar.getByRole("button", { name: "查看图片一：showcase-reference.png", exact: true }).waitFor({ state: "visible" });
+
+            const beforeDrag = await rect(page.locator(`[data-node-id="${image}"]`));
+            await drag(
+                { x: beforeDrag.x + beforeDrag.width / 2, y: beforeDrag.y + 20 },
+                { x: beforeDrag.x + beforeDrag.width / 2 + 80, y: beforeDrag.y + 60 },
+            );
+            const afterDrag = await rect(page.locator(`[data-node-id="${image}"]`));
+            assert(Math.abs(afterDrag.x - beforeDrag.x) < 2 && Math.abs(afterDrag.y - beforeDrag.y) < 2, "只读展示页允许移动节点");
+
+            await page.getByRole("button", { name: "资产", exact: true }).click();
+            await page.getByRole("button", { name: "助手聊天记录", exact: true }).click();
+            await page.getByText("展示页用户测试句", { exact: true }).waitFor({ state: "visible" });
+            await page.getByText("展示页助手测试句", { exact: true }).waitFor({ state: "visible" });
+            assert.equal(await page.getByRole("textbox", { name: "描述创作目标，或让我继续操作画布", exact: true }).count(), 0, "聊天记录里出现了输入框");
+
+            await page.getByRole("button", { name: "资产", exact: true }).click();
+            const firstAsset = page.locator('aside[aria-label="作品资产"] .grid button').first();
+            await firstAsset.waitFor({ state: "visible" });
+            await firstAsset.click();
+            await page.getByRole("dialog").locator("img").waitFor({ state: "visible" });
+        },
+    ],
 ];
 
 await mkdir(screens, { recursive: true });
@@ -1479,16 +1607,30 @@ try {
     }, { origin: new URL(baseURL).origin, config: testModelConfig });
     context.on("page", (p) => {
         p.on("pageerror", (error) => {
-            const item = { type: "pageerror", message: clean(error.message), url: p.url() };
+            const stack = String(error.stack || "")
+                .replace(password ? new RegExp(password.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g") : /$^/, "[已隐藏]")
+                .replace(/\x1b\[[0-9;]*m/g, "")
+                .slice(0, 1500);
+            const item = { type: "pageerror", message: clean(error.message), stack, checkName: currentCheckName, url: p.url() };
             if (p.__preparationErrors) p.__preparationErrors.push(item);
             else runtimeErrors.push(item);
         });
         p.on("console", (message) => {
             if (message.type() === "error" && message.text().includes("Maximum update depth")) {
-                const item = { type: "console", message: clean(message.text()), url: p.url() };
+                const item = { type: "console", message: clean(message.text()), checkName: currentCheckName, url: p.url() };
                 if (p.__preparationErrors) p.__preparationErrors.push(item);
                 else runtimeErrors.push(item);
             }
+        });
+        p.on("response", (response) => {
+            const url = response.url();
+            const isScript = response.request().resourceType() === "script";
+            if (!isScript || !(/\.js(?:[?#]|$)/i.test(url) || /\/_next\//i.test(url))) return;
+            const headers = response.headers();
+            const contentType = headers["content-type"] || "";
+            const status = response.status();
+            if (status < 400 && /(?:java|ecma)script/i.test(contentType)) return;
+            runtimeErrors.push({ type: "badscript", url, status, contentType, checkName: currentCheckName });
         });
     });
     page = await context.newPage();
@@ -1516,7 +1658,8 @@ try {
         });
     await run("全程页面错误监听", async () => {
         if (!navigationStarted) throw new Skip("Chrome 未启动，页面检查未执行");
-        assert.equal(runtimeErrors.length, 0, runtimeErrors.map((e) => `${e.type}: ${e.message}`).join("；"));
+        const errors = runtimeErrors.filter((error) => error.type !== "badscript");
+        assert.equal(errors.length, 0, errors.map((e) => `${e.type}: ${e.message}`).join("；"));
     });
     try {
         await browser?.close();

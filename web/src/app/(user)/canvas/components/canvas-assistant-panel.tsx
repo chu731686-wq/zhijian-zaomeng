@@ -63,6 +63,7 @@ import {
     type CanvasNodeData,
 } from "../types";
 import { isCanvasImageNodeType } from "../utils/canvas-panorama";
+import { showcaseToolHistory, type CanvasRecordedSession } from "../utils/canvas-showcase";
 import { assistantReferenceContentFromNode, buildAllCanvasResourceReferences, type CanvasResourceReference } from "../utils/canvas-resource-references";
 import { assistantToPromptReference, CanvasAssistantComposer } from "./canvas-assistant-composer";
 import { CanvasCliConnectView } from "./canvas-cli-connect-view";
@@ -410,7 +411,22 @@ export function CanvasAssistantPanel({
         setSelectedSkills((current) => current.filter((skill) => skill.id !== id || skill.source !== source));
     };
 
-    const executeCanvasTool = async (action: CanvasAgentAction, messageReferenceNodeIds: string[], activeSkills: CanvasAgentSkillSelection[], provider: "api" | "codex", signal: AbortSignal): Promise<CanvasAgentToolResult> => {
+    const executeCanvasTool = async (action: CanvasAgentAction, messageReferenceNodeIds: string[], activeSkills: CanvasAgentSkillSelection[], provider: "api" | "codex", signal: AbortSignal, sessionId = activeSessionIdRef.current): Promise<CanvasAgentToolResult> => {
+        const record = (result: unknown) => {
+            if (!sessionId) return;
+            updateSession(sessionId, (current: CanvasRecordedSession) => ({ ...current, toolHistory: [...showcaseToolHistory(current).filter((item) => item.id !== action.id), { ...action, result }], updatedAt: new Date().toISOString() }));
+        };
+        try {
+            const result = await performCanvasTool(action, messageReferenceNodeIds, activeSkills, provider, signal);
+            record(result);
+            return result;
+        } catch (error) {
+            record({ ok: false, message: error instanceof Error ? error.message : "工具执行失败" });
+            throw error;
+        }
+    };
+
+    const performCanvasTool = async (action: CanvasAgentAction, messageReferenceNodeIds: string[], activeSkills: CanvasAgentSkillSelection[], provider: "api" | "codex", signal: AbortSignal): Promise<CanvasAgentToolResult> => {
         signal.throwIfAborted();
         if (action.name === "web_search" || action.name === "web_fetch") {
             if (!isWebSearchEnabled()) return { ok: false, code: "web_search_disabled", message: "联网搜索已关闭" };
@@ -638,7 +654,7 @@ export function CanvasAssistantPanel({
                 contextCheckpoint: session.contextCheckpoint,
                 preferredJsonMode: session.jsonToolFallbackKey === jsonToolFallbackKey ? session.jsonToolFallbackMode || "structured-json" : undefined,
                 getContext: getAgentContext,
-                executeAction: (action, signal = controller.signal) => executeCanvasTool(action, messageReferenceNodeIds, activeSkills, mode, signal),
+                executeAction: (action, signal = controller.signal) => executeCanvasTool(action, messageReferenceNodeIds, activeSkills, mode, signal, session.id),
                 signal: controller.signal,
                 onEvent: (event) => updateMessage(session.id, assistantId, { status: event.status, activity: event.label }),
                 onCheckpoint: (checkpoint) =>
@@ -977,7 +993,7 @@ function AssistantMarkdown({ children, components }: { children: string; compone
     );
 }
 
-function AssistantMessages({ messages, nodeById, onFocusNode, onRetry, codexMode }: { messages: CanvasAssistantMessage[]; nodeById: ReadonlyMap<string, CanvasNodeData>; onFocusNode: (nodeId: string) => void; onRetry: (message: CanvasAssistantMessage) => void; codexMode?: boolean }) {
+function AssistantMessages({ messages, nodeById, onFocusNode, onRetry, codexMode, readOnly = false, onViewMedia }: { messages: CanvasAssistantMessage[]; nodeById: ReadonlyMap<string, CanvasNodeData>; onFocusNode: (nodeId: string) => void; onRetry?: (message: CanvasAssistantMessage) => void; codexMode?: boolean; readOnly?: boolean; onViewMedia?: (url: string, kind: string, title: string) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const copyText = useCopyText();
     const markdownComponents = useMemo<Components>(() => ({
@@ -1010,7 +1026,7 @@ function AssistantMessages({ messages, nodeById, onFocusNode, onRetry, codexMode
     return (
         <>
             {messages.map((message) => {
-                const running = message.status === "thinking" || message.status === "running";
+                const running = !readOnly && (message.status === "thinking" || message.status === "running");
                 const showSkills = message.skillsSelected ?? Boolean(message.skills?.length && !sameSkillSelections(message.skills, previousUserSkills));
                 if (message.role === "user") previousUserSkills = message.skills || [];
                 return (
@@ -1041,14 +1057,43 @@ function AssistantMessages({ messages, nodeById, onFocusNode, onRetry, codexMode
                         {!running && message.text && message.text !== "已整理前面的对话，要点已记下" ? (
                             <div className="flex gap-1">
                                 <Button shape="circle" size="small" style={{ borderColor: theme.node.stroke }} icon={<Copy className="size-3.5" />} onClick={() => copyText(message.text, "消息已复制")} title="复制" />
-                                {message.role === "assistant" ? <Button shape="circle" size="small" style={{ borderColor: theme.node.stroke }} icon={<RotateCcw className="size-3.5" />} onClick={() => onRetry(message)} title="重试" /> : null}
+                                {!readOnly && onRetry && message.role === "assistant" ? <Button shape="circle" size="small" style={{ borderColor: theme.node.stroke }} icon={<RotateCcw className="size-3.5" />} onClick={() => onRetry(message)} title="重试" /> : null}
                             </div>
                         ) : null}
+                        {readOnly && message.references?.length ? <div className="flex max-w-full flex-wrap gap-2">{message.references.map((reference) => {
+                            const url = reference.dataUrl || reference.url || "";
+                            const image = isCanvasImageNodeType(reference.type);
+                            return <button key={reference.id} type="button" className="max-w-40 rounded-lg border p-2 text-left text-xs" style={{ borderColor: theme.node.stroke }} onClick={() => { if (url && reference.type !== CanvasNodeType.Text) onViewMedia?.(url, image ? "image" : reference.type, reference.title); else onFocusNode(reference.id); }}>
+                                {image && url ? <img src={imagePreviewUrl(url)} alt={reference.title} className="mb-1 h-20 w-28 object-contain" /> : null}<span className="block break-words">{reference.label || reference.title}</span>
+                                {reference.text ? <span className="mt-1 block max-h-40 overflow-y-auto whitespace-pre-wrap select-text">{reference.text}</span> : null}
+                            </button>;
+                        })}</div> : null}
+                        {readOnly ? message.images?.map((image) => <button key={image.id} type="button" onClick={() => onViewMedia?.(image.dataUrl, "image", image.prompt)}><img src={imagePreviewUrl(image.dataUrl, 512, image.storageKey)} alt={image.prompt || "助手图片"} className="max-h-48 max-w-full rounded-lg object-contain" /></button>) : null}
                     </div>
                 );
             })}
         </>
     );
+}
+
+export function CanvasAssistantHistoryPanel({ sessions, nodes, onFocusNode, onViewMedia }: { sessions: CanvasAssistantSession[]; activeSessionId: string | null; nodes: CanvasNodeData[]; onFocusNode: (nodeId: string) => void; onViewMedia: (url: string, kind: string, title: string) => void }) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+    const orderedSessions = [...sessions].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    return <div className="flex h-full min-h-0 flex-col" style={{ color: theme.node.text }}>
+        <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-3 select-text">
+            {!orderedSessions.length ? <p className="text-sm opacity-60">作者还没有保存聊天记录</p> : orderedSessions.map((session, index) => {
+                const tools = showcaseToolHistory(session);
+                const date = new Date(session.createdAt);
+                const dateLabel = Number.isNaN(date.getTime()) ? "日期未知" : date.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+                return <section key={session.id}>
+                    {orderedSessions.length > 1 ? <div className={`flex items-center gap-2 ${index ? "mb-4 mt-5" : "mb-4"}`}><span className="h-px flex-1" style={{ background: theme.node.stroke }} /><span className="shrink-0 text-xs opacity-60">{dateLabel}</span><span className="h-px flex-1" style={{ background: theme.node.stroke }} /></div> : null}
+                    <AssistantMessages readOnly messages={session.messages || []} nodeById={nodeById} onFocusNode={onFocusNode} onViewMedia={onViewMedia} codexMode={session.provider === "codex"} />
+                    {tools.length ? <details className="mt-4 rounded-lg border p-3 text-xs" style={{ borderColor: theme.node.stroke }}><summary className="cursor-pointer">工具调用记录 · {tools.length} 次</summary><div className="mt-3 space-y-2">{tools.map((tool) => <details key={tool.id}><summary className="cursor-pointer">{tool.name}</summary><div className="mt-2">参数</div><pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(tool.arguments, null, 2)}</pre><div>结果</div><pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{typeof tool.result === "string" ? tool.result : JSON.stringify(tool.result, null, 2)}</pre></details>)}</div></details> : null}
+                </section>;
+            })}
+        </div>
+    </div>;
 }
 
 function AssistantHistory({

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
-import { ArrowUp, LoaderCircle, Maximize2 } from "lucide-react";
+import { ArrowUp, Copy, LoaderCircle, Maximize2 } from "lucide-react";
 import { Button, Modal, Tooltip } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
+import { useCopyText } from "@/hooks/use-copy-text";
 import { useAutoDLWorkflow } from "@/hooks/use-autodl-workflow";
 import { getAutoDLCapabilities, isAutoDLConfig } from "@/lib/autodl";
 import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -23,13 +24,15 @@ import { CanvasVideoSettingsPopover, type CanvasVideoFrameOption, type CanvasVid
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasPendingMaterial } from "../types";
 import { PANORAMA_IMAGE_SIZE, isCanvasImageNodeType, isPanoramaNodeType } from "../utils/canvas-panorama";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
-import type { GenerationReference } from "../utils/canvas-generation-references";
+import { materialId, materialTokenPattern, type GenerationReference } from "../utils/canvas-generation-references";
 
 export type { CanvasVideoFrameOption };
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
 type CanvasNodePromptPanelProps = {
+    readOnly?: boolean;
+    onViewReference?: (reference: GenerationReference) => void;
     node: CanvasNodeData;
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
@@ -45,11 +48,16 @@ type CanvasNodePromptPanelProps = {
     onImageSettingsOpenChange?: (open: boolean) => void;
 };
 
-export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], materialReferences = [], onAddMaterials, onRemoveMaterial, videoFrameOptions = [], videoResourceOptions = [], onDisconnectReference, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
+    return <EditablePromptPanel {...props} />;
+}
+
+function EditablePromptPanel({ readOnly = false, onViewReference, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], materialReferences = [], onAddMaterials, onRemoveMaterial, videoFrameOptions = [], videoResourceOptions = [], onDisconnectReference, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const globalConfig = useEffectiveConfig();
     const modelCosts = useConfigStore((state) => state.publicSettings?.modelChannel.modelCosts);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const copyText = useCopyText();
     const mode = defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
     const { data: autodlWorkflow } = useAutoDLWorkflow(config, mode === "video" ? config.model : "");
@@ -64,12 +72,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         ? `workflow:${workflowRef.scope}:${workflowRef.channelId}:${workflowRef.kind}:${workflowRef.workflowId}`
         : config.model;
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: billingModel, count: mode === "image" ? config.count : 1, seconds: mode === "video" ? config.videoSeconds : undefined });
+    const copyPrompt = prompt.replace(materialTokenPattern, (token, id: string) => materialReferences.find((reference) => reference.id === materialId(id))?.label || token);
 
     useEffect(() => {
         setPrompt(sourcePrompt);
     }, [node.id, sourcePrompt]);
 
     const updatePrompt = (value: string) => {
+        if (readOnly) return;
         setPrompt(value);
         onPromptChange(node.id, value);
     };
@@ -86,9 +96,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         const props = { value: prompt, onChange: updatePrompt, className, style, placeholder: isPanorama ? "描述想生成的全景，或上传/连接图片作为参考" : promptPlaceholder(mode, hasImageContent, hasTextContent) };
         return mode === "text"
             ? <CanvasPromptChipInput {...props} references={mentionReferences} onSubmit={expandedEditor ? undefined : () => submit()} />
-            : <CanvasGenerationPromptInput {...props} references={materialReferences} onSubmit={expandedEditor ? undefined : submit} />;
+            : <CanvasGenerationPromptInput {...props} references={materialReferences} onSubmit={expandedEditor || readOnly ? undefined : submit} readOnly={readOnly} />;
     };
-    const referenceBar = <CanvasNodeReferenceBar references={materialReferences} onAdd={(materials) => onAddMaterials(node.id, materials)} onRemove={(reference) => {
+    const referenceBar = <CanvasNodeReferenceBar readOnly={readOnly} onView={onViewReference} references={materialReferences} onAdd={(materials) => onAddMaterials(node.id, materials)} onRemove={(reference) => {
         if (reference.connectionId && reference.kind !== "image") onDisconnectReference?.(reference.nodeId, reference.targetNodeId || node.id);
         else onRemoveMaterial(node.id, reference.id);
     }} />;
@@ -110,6 +120,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     <Tooltip title="放大编辑">
                         <Button type="text" className="!h-8 !w-8 !min-w-8 shrink-0 !rounded-full !bg-transparent !p-0" style={{ color: theme.node.text }} icon={<Maximize2 className="size-3.5" />} onClick={() => setExpanded(true)} aria-label="放大编辑" />
                     </Tooltip>
+                    <div inert={readOnly || undefined} className={`flex min-w-0 items-center gap-2 ${readOnly ? "flex-wrap" : ""}`}>
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
@@ -142,8 +153,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     ) : mode === "image" && !isPanorama ? (
                         <CanvasCameraControl value={node.metadata?.cameraControl} onChange={(cameraControl) => onConfigChange(node.id, { cameraControl })} buttonClassName="!h-10 !min-w-[92px] !justify-start !rounded-full !px-3" />
                     ) : null}
+                    </div>
                 </div>
-                <Button
+                {readOnly ? <Button type="primary" icon={<Copy className="size-4" />} className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3" onClick={() => copyText(copyPrompt, "已复制")} aria-label="复制提示词" title="复制提示词" /> : <Button
                     type="primary"
                     className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
                     disabled={isRunning || !canSubmit}
@@ -157,9 +169,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         </span>
                         {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
                     </span>
-                </Button>
+                </Button>}
             </div>
-            <Modal title="编辑提示词" open={expanded} centered width={760} footer={null} onCancel={() => setExpanded(false)} destroyOnHidden>
+            <Modal title={readOnly ? "查看提示词" : "编辑提示词"} open={expanded} centered width={760} footer={readOnly ? <Button type="primary" icon={<Copy className="size-4" />} onClick={() => copyText(copyPrompt, "已复制")}>复制提示词</Button> : null} onCancel={() => setExpanded(false)} destroyOnHidden>
                 <div data-canvas-no-zoom className="pt-2" onWheelCapture={(event) => event.stopPropagation()}>
                     {mode !== "text" ? referenceBar : null}
                     {renderPromptInput("thin-scrollbar h-[52dvh] min-h-80 w-full cursor-text overflow-y-auto rounded-2xl border p-4 text-[15px] leading-6 outline-none", { background: "transparent", borderColor: theme.toolbar.border, color: theme.node.text }, true)}

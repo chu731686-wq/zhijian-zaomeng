@@ -120,7 +120,7 @@ export function InfiniteCanvas({ readOnly = false, containerRef, viewport, tool,
         if (readOnly && target?.closest("button,input,textarea,audio,video,[data-canvas-no-zoom]")) return;
         const temporaryTool = isSpacePressed;
         const activeTool = temporaryTool ? "pan" : tool;
-        const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
+        const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]") || readOnly && Boolean(target?.closest("[data-node-id]")?.hasAttribute("data-group-category"));
         // 左键：鼠标下面是空白才拖画布；在节点/连线上就交给节点自己（拖动、连线、单击打开提示词框）
         const shouldPan = event.button === 1 || (event.button === 0 && (temporaryTool || (activeTool === "pan" && !event.shiftKey) || (activeTool === "select" && !event.shiftKey && isBackgroundClick)));
         if (activeTool === "pan" && (!target || !event.currentTarget.contains(target))) return;

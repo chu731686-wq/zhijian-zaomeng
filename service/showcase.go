@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/tigerowo/infinite-canvas/model"
@@ -42,11 +43,26 @@ func showcaseFileID(value string) string {
 	return ""
 }
 
+var showcaseContentFilePattern = regexp.MustCompile(`/api/files/([^/\s?"<>\x60]+)/content`)
+
 func showcaseFileIDs(value any, ids map[string]bool) {
 	switch v := value.(type) {
 	case string:
 		if id := showcaseFileID(v); id != "" {
 			ids[id] = true
+		}
+		// Chat markdown and tool results may embed file links inside text.
+		for _, match := range showcaseContentFilePattern.FindAllString(v, -1) {
+			if id := showcaseFileID(match); id != "" {
+				ids[id] = true
+			}
+		}
+		var embedded any
+		if json.Unmarshal([]byte(v), &embedded) == nil {
+			switch embedded.(type) {
+			case map[string]any, []any:
+				showcaseFileIDs(embedded, ids)
+			}
 		}
 	case []any:
 		for _, item := range v {

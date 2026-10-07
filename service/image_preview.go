@@ -11,7 +11,9 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"strings"
+	"sync"
 
 	"github.com/tigerowo/infinite-canvas/model"
 	"golang.org/x/sync/singleflight"
@@ -66,6 +68,49 @@ var previewGeneration singleflight.Group
 
 // Keep first-time decoding bounded on small servers; cached reads stay concurrent.
 var previewDecodeSlots = make(chan struct{}, 2)
+
+const imagePreviewWarmQueueSize = 32
+
+var (
+	imagePreviewWarmQueue = make(chan model.StorageObject, imagePreviewWarmQueueSize)
+	imagePreviewWarmOnce  sync.Once
+	imagePreviewWarmMu    sync.Mutex
+	imagePreviewWarmIDs   = make(map[string]struct{})
+	imagePreviewWarmFunc  = ImagePreview
+)
+
+// WarmImagePreviews queues both common preview sizes for asynchronous generation.
+// A full queue is deliberately dropped so uploads never wait for preview work.
+func WarmImagePreviews(object model.StorageObject) {
+	if !strings.HasPrefix(strings.ToLower(object.MimeType), "image/") {
+		return
+	}
+	imagePreviewWarmOnce.Do(func() { go runImagePreviewWarmQueue() })
+
+	imagePreviewWarmMu.Lock()
+	if _, exists := imagePreviewWarmIDs[object.ID]; exists {
+		imagePreviewWarmMu.Unlock()
+		return
+	}
+	imagePreviewWarmIDs[object.ID] = struct{}{}
+	select {
+	case imagePreviewWarmQueue <- object:
+		imagePreviewWarmMu.Unlock()
+	default:
+		delete(imagePreviewWarmIDs, object.ID)
+		imagePreviewWarmMu.Unlock()
+	}
+}
+
+func runImagePreviewWarmQueue() {
+	for object := range imagePreviewWarmQueue {
+		for _, width := range []int{512, 1024} {
+			if _, err := imagePreviewWarmFunc(object, width); err != nil {
+				log.Printf("预览图预热失败 object=%s width=%d: %v", object.ID, width, err)
+			}
+		}
+	}
+}
 
 // ImagePreview reads derivatives from the original provider before decoding the source.
 func ImagePreview(object model.StorageObject, width int) (DownloadedStorageObject, error) {

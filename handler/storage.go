@@ -90,6 +90,12 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	OK(w, object)
+	go func() {
+		storedObject, err := service.StorageObjectInfo(object.ID)
+		if err == nil {
+			service.WarmImagePreviews(storedObject)
+		}
+	}()
 }
 
 // RegisterDirectFile 登记浏览器已直传至用户 WebDAV 的文件。
