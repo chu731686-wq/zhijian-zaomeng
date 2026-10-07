@@ -1,0 +1,128 @@
+.card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    width: 96px;
+    height: 84px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 160ms, background-color 160ms;
+}
+.card:hover { border-color: var(--line-strong); background: var(--hover); }
+.card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.name { max-width: 100%; white-space: nowrap; font-size: 12px; line-height: 16px; }
+.frame {
+    position: relative;
+    flex-shrink: 0;
+    width: 72px;
+    height: 44px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #0a0a0c;
+    perspective: 120px;
+    perspective-origin: 50% 50%;
+}
+.stage { position: absolute; inset: 0; transform-style: preserve-3d; transform-origin: 50% 50%; }
+.grid { position: absolute; inset: 0; transform: translateZ(-6px); transform-origin: 50% 16px; }
+.rays { position: absolute; inset: 0; stroke: var(--line-strong); stroke-width: 1; }
+.rows { position: absolute; inset: 16px 0 0; overflow: hidden; }
+.row { position: absolute; top: 0; left: 0; width: 100%; height: 1px; background: var(--line-strong); }
+.row:nth-child(1) { transform: translateY(4px); animation-delay: -.4s; }
+.row:nth-child(2) { transform: translateY(12px); animation-delay: -1.2s; }
+.row:nth-child(3) { transform: translateY(24px); animation-delay: -2s; }
+.light { position: absolute; left: 51px; top: 12px; width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .6; transform: translateZ(-14px); }
+.subject { position: absolute; left: 28px; bottom: 7px; width: 16px; height: 22px; color: var(--muted); transform: translateZ(8px); transform-origin: 50% 100%; }
+.subject svg { display: block; }
+.direction { position: absolute; right: 3px; bottom: 3px; z-index: 1; color: var(--accent); }
+
+/* A negative half-cycle starts paused previews at the middle frame. Hover and
+   selection resume the same timeline instead of restarting it on every event. */
+.stage, .grid, .subject, .row {
+    animation-duration: 2.4s;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+    animation-delay: -1.2s;
+    animation-play-state: paused;
+}
+.card:is(:hover, [aria-pressed="true"]) :is(.stage, .grid, .subject, .row) { animation-play-state: running; }
+.card[data-motion="push"] .stage { animation-name: push; }
+.card[data-motion="pull"] .stage { animation-name: pull; }
+.card[data-motion="pan-left"] .stage { animation-name: panLeft; }
+.card[data-motion="pan-right"] .stage { animation-name: panRight; }
+.card[data-motion="tilt-up"] .stage { animation-name: tiltUp; }
+.card[data-motion="tilt-down"] .stage { animation-name: tiltDown; }
+.card[data-motion="truck-left"] .stage { animation-name: truckLeft; }
+.card[data-motion="truck-left"] .subject { animation-name: parallaxLeft; }
+.card[data-motion="truck-right"] .stage { animation-name: truckRight; }
+.card[data-motion="truck-right"] .subject { animation-name: parallaxRight; }
+.card[data-motion="crane-up"] .stage { animation-name: craneUp; }
+.card[data-motion="crane-down"] .stage { animation-name: craneDown; }
+.card[data-motion="tracking"] .subject { animation-name: walk; }
+.card[data-motion="tracking"] .row { animation-name: flowBack; }
+.card[data-motion="orbit"] .stage { animation-name: orbit; }
+.card[data-motion="handheld"] .stage { animation-name: handheld; }
+.card[data-motion="dolly-zoom"] .grid { animation-name: dollyZoom; }
+.card[data-motion="whip-pan"] .stage { animation-name: whip; }
+.card[data-motion="aerial-dive"] .stage { animation-name: dive; }
+.card[data-motion="pov"] .stage { animation-name: breathe; }
+.card[data-motion="pov"] .row { animation-name: flowForward; }
+.card[data-motion="roll"] .stage { animation-name: roll; }
+.card[data-motion="orbit"] .stage, .card[data-motion="roll"] .stage,
+.card[data-motion="tracking"] .row, .card[data-motion="pov"] .row {
+    animation-direction: normal;
+    animation-timing-function: linear;
+}
+
+@keyframes push { from { transform: translateZ(0); } to { transform: translateZ(40px); } }
+@keyframes pull { from { transform: translateZ(40px); } to { transform: translateZ(0); } }
+@keyframes panLeft { from { transform: rotateY(0); } to { transform: rotateY(18deg); } }
+@keyframes panRight { from { transform: rotateY(0); } to { transform: rotateY(-18deg); } }
+@keyframes tiltUp { from { transform: rotateX(0); } to { transform: rotateX(-14deg); } }
+@keyframes tiltDown { from { transform: rotateX(0); } to { transform: rotateX(14deg); } }
+@keyframes truckLeft { from { transform: translateX(0); } to { transform: translateX(14px); } }
+@keyframes truckRight { from { transform: translateX(0); } to { transform: translateX(-14px); } }
+@keyframes parallaxLeft { from { transform: translateZ(8px) translateX(0); } to { transform: translateZ(8px) translateX(5.6px); } }
+@keyframes parallaxRight { from { transform: translateZ(8px) translateX(0); } to { transform: translateZ(8px) translateX(-5.6px); } }
+@keyframes craneUp { from { transform: translateY(0) rotateX(0); } to { transform: translateY(10px) rotateX(12deg); } }
+@keyframes craneDown { from { transform: translateY(10px) rotateX(12deg); } to { transform: translateY(0) rotateX(0); } }
+@keyframes walk { from { transform: translateZ(8px) translateY(.8px); } to { transform: translateZ(8px) translateY(-.8px); } }
+@keyframes orbit { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+@keyframes handheld {
+    0%, 100% { transform: translate(0, 0); }
+    17% { transform: translate(-1.5px, .6px); }
+    38% { transform: translate(.8px, -1.5px); }
+    57% { transform: translate(-.6px, 1.2px); }
+    79% { transform: translate(1.5px, -.4px); }
+}
+@keyframes dollyZoom { from { transform: translateZ(-6px) scale(1); } to { transform: translateZ(-6px) scale(1.5); } }
+@keyframes whip {
+    0%, 30% { transform: translateX(0); filter: blur(0); }
+    48% { filter: blur(1.5px); }
+    70%, 100% { transform: translateX(-30px); filter: blur(0); }
+}
+@keyframes dive { from { transform: rotateX(60deg) scale(.7); } to { transform: rotateX(15deg) scale(1.1); } }
+@keyframes breathe { from { transform: translateY(.8px); } to { transform: translateY(-.8px); } }
+@keyframes roll { from { transform: rotateZ(0); } to { transform: rotateZ(360deg); } }
+/* Fading at the vanishing point and frame edge hides the wrap of each row. */
+@keyframes flowForward {
+    from { transform: translateY(0); opacity: 0; }
+    15%, 85% { opacity: 1; }
+    to { transform: translateY(28px); opacity: 0; }
+}
+@keyframes flowBack {
+    from { transform: translateY(28px); opacity: 0; }
+    15%, 85% { opacity: 1; }
+    to { transform: translateY(0); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .card:is(:hover, [aria-pressed="true"]) :is(.stage, .grid, .subject, .row) { animation-play-state: paused; }
+    .card { transition: none; }
+}

@@ -1,0 +1,58 @@
+.root :global(.workflow-graph-editor) { display: grid; grid-template-columns: minmax(290px, 40%) minmax(0, 1fr); min-height: 560px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); }
+.root :global(.workflow-graph-sidebar) { min-width: 0; max-height: 680px; overflow: auto; padding: 14px; background: var(--card); }
+.root :global(.workflow-graph-sidebar .workflow-field-mapping-editor .ant-collapse) { min-width: max-content; }
+.root :global(.workflow-graph-summary) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.root :global(.workflow-graph-summary > span) { display: grid; gap: 3px; padding: 10px; border-radius: var(--radius); background: var(--muted); }
+.root :global(.workflow-graph-summary small), .root :global(.workflow-graph-node-select > span), .root :global(.workflow-graph-selected-heading span) { color: var(--muted-foreground); font-size: 11px; }
+.root :global(.workflow-graph-summary strong) { font-variant-numeric: tabular-nums; }
+.root :global(.workflow-graph-node-select), .root :global(.workflow-graph-selected-heading) { display: grid; gap: 5px; margin-top: 13px; }
+.root :global(.workflow-graph-stage) { position: relative; min-width: 0; min-height: 560px; background: radial-gradient(circle, color-mix(in srgb, var(--foreground) 14%, transparent) 1px, transparent 1px) 0 0 / 20px 20px, var(--background); }
+.root :global(.workflow-graph-controls) { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; align-items: center; gap: 4px; padding: 3px; border-radius: 8px; background: var(--card); }
+.root :global(.workflow-graph-viewport) { position: absolute; inset: 0; width: 100%; overflow: auto; cursor: grab; touch-action: none; user-select: none; }
+.root :global(.workflow-graph-viewport:active) { cursor: grabbing; }
+.root :global(.workflow-graph-svg) { display: block; }
+.root :global(.workflow-graph-edge) { fill: none; stroke: var(--muted-foreground); stroke-width: 1.5; opacity: .55; }
+.root :global(.workflow-graph-node) { cursor: pointer; outline: none; }
+.root :global(.workflow-graph-node rect) { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
+.root :global(.workflow-graph-node.has-fields rect) { stroke: var(--primary); }
+.root :global(.workflow-graph-node.is-selected rect) { stroke: var(--primary); stroke-width: 2.5; }
+.root :global(.workflow-graph-node text) { pointer-events: none; }
+.root :global(.workflow-graph-node-title) { fill: var(--foreground); font-size: 12px; font-weight: 600; }
+.root :global(.workflow-graph-node-type), .root :global(.workflow-graph-node-id), .root :global(.workflow-graph-node-count) { fill: var(--muted-foreground); font-size: 10px; }
+.root :global(.workflow-test-workbench) { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); }
+.root :global(.workflow-test-toolbar) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--card); }
+.root :global(.workflow-test-toolbar > div:first-child) { display: grid; min-width: 0; gap: 2px; }
+.root :global(.workflow-test-toolbar strong) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.root :global(.workflow-test-toolbar span), .root :global(.workflow-test-notice) { color: var(--muted-foreground); font-size: 11px; }
+.root :global(.workflow-test-toolbar-actions) { display: flex; flex-wrap: wrap; gap: 8px; }
+.root :global(.workflow-test-notice) { padding: 8px 16px; background: color-mix(in srgb, orange 12%, var(--card)); }
+.root :global(.workflow-test-canvas-scroll) { max-width: 100%; overflow: auto; }
+.root :global(.workflow-test-canvas) { position: relative; min-width: 1040px; height: 760px; overflow: hidden; background: radial-gradient(circle, color-mix(in srgb, var(--foreground) 14%, transparent) 1px, transparent 1px) 0 0 / 20px 20px, var(--background); user-select: none; }
+.root :global(.workflow-test-lines) { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.root :global(.workflow-test-lines path) { fill: none; stroke: var(--primary); stroke-width: 2; opacity: .7; }
+.root :global(.workflow-test-node) { position: absolute; top: 0; left: 0; width: 284px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); box-shadow: 0 4px 18px color-mix(in srgb, var(--foreground) 9%, transparent); }
+.root :global(.workflow-test-node.is-wide) { width: 324px; }
+.root :global(.workflow-test-node-header) { display: flex; min-height: 42px; align-items: center; gap: 8px; padding: 0 12px; cursor: grab; touch-action: none; background: var(--muted); }
+.root :global(.workflow-test-node-header:active) { cursor: grabbing; }
+.root :global(.workflow-test-node-header > span svg), .root :global(.workflow-test-node-grip) { width: 16px; height: 16px; }
+.root :global(.workflow-test-node-header strong) { overflow: hidden; flex: 1; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.root :global(.workflow-test-node-body) { max-height: 430px; overflow: auto; padding: 12px; }
+.root :global(.workflow-test-port) { position: absolute; top: 66px; width: 12px; height: 12px; border: 2px solid var(--card); border-radius: 50%; background: var(--primary); }
+.root :global(.workflow-test-port.is-input) { left: -6px; }
+.root :global(.workflow-test-port.is-output) { right: -6px; }
+.root :global(.workflow-test-upload) { display: grid; min-height: 75px; place-items: center; cursor: pointer; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted-foreground); font-size: 11px; }
+.root :global(.workflow-test-upload > span) { display: flex; align-items: center; gap: 8px; }
+.root :global(.workflow-test-upload svg) { width: 16px; height: 16px; }
+.root :global(.workflow-test-file-list) { display: grid; width: 100%; gap: 4px; }
+.root :global(.workflow-test-file-list > span) { display: grid; grid-template-columns: 32px 24px minmax(0, 1fr); align-items: center; gap: 5px; }
+.root :global(.workflow-test-file-list img) { width: 32px; height: 32px; object-fit: cover; }
+.root :global(.workflow-test-file-list em) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.root :global(.workflow-test-parameters) { display: grid; gap: 10px; }
+.root :global(.workflow-test-parameters > label) { display: grid; gap: 4px; }
+.root :global(.workflow-test-parameters > label > span) { display: flex; justify-content: space-between; gap: 5px; font-size: 11px; }
+.root :global(.workflow-test-parameters small), .root :global(.workflow-test-empty-text) { color: var(--muted-foreground); }
+.root :global(.workflow-test-output) { display: grid; min-height: 150px; place-items: center; overflow: hidden; border-radius: var(--radius); background: var(--muted); }
+.root :global(.workflow-test-output img), .root :global(.workflow-test-output video) { width: 100%; max-height: 280px; object-fit: contain; }
+.root :global(.workflow-test-image-results) { display: grid; width: 100%; gap: 8px; }
+.root :global(.workflow-test-output audio) { width: calc(100% - 16px); }
+@media (max-width: 900px) { .root :global(.workflow-graph-editor) { grid-template-columns: 1fr; } .root :global(.workflow-graph-sidebar) { max-height: none; } }

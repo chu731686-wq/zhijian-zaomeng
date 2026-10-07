@@ -1,0 +1,54 @@
+.workspace { font-family: var(--studio-font); font-variant-numeric: tabular-nums; }
+.workspace :global(svg.lucide) { stroke-width: 1.75; }
+.workspace button:focus-visible, .workspace a:focus-visible, .workspace input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.topbar { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.logoMenu { display: inline-flex; align-items: center; gap: 2px; }
+button.logoMenu { width: auto; padding: 0 6px 0 4px; }
+.logoMenu .logoMenuArrow { width: 14px; height: 14px; flex-shrink: 0; transition: transform 200ms ease; }
+.logoMenuArrowOpen { transform: rotate(180deg); }
+.tabs { display: flex; align-items: stretch; min-width: 0; flex: 1; height: 100%; overflow: hidden; }
+.tab { display: flex; align-items: center; min-width: 80px; max-width: 184px; gap: 8px; padding: 0 12px; color: var(--muted); border-top: 2px solid transparent; font-size: 12px; }
+.tab[aria-current="page"] { background: var(--bg); border-top-color: var(--accent); color: var(--text); }
+.tab:hover { background: var(--hover); }
+.tabTitle { min-width: 0; min-height: 36px; flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabClose { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; opacity: 0; }
+.tabClose button { width: 36px; height: 36px; display: grid; place-items: center; }
+.tab:hover .tabClose, .tab[aria-current="page"] .tabClose { opacity: 1; }
+.saveStatus { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.toolRail { position: absolute; left: 12px; top: 16px; z-index: 50; width: 56px; max-height: calc(100% - 144px); overflow-y: auto; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.railButton { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 48px; min-height: 48px; color: var(--muted); font-size: 11px; line-height: 16px; border-radius: 8px; cursor: pointer; }
+.railButton:hover { background: var(--hover); color: var(--text); }
+.railButton:disabled { color: var(--subtle); cursor: default; }
+.railButton svg { width: 20px; height: 20px; }
+.addIcon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+.dock { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 4px; height: 44px; max-width: calc(100% - 32px); padding: 0 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); }
+.dock button { flex-shrink: 0; }
+.divider { height: 20px; width: 1px; background: var(--line); margin: 0 4px; flex-shrink: 0; }
+.nodeCard { border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.nodeCard:hover { border-color: var(--line-strong); }
+.nodeCard[data-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.nodeCard[data-unavailable="true"] { color: var(--muted); }
+.nodeCard[data-unavailable="true"] .nodeTitle, .nodeCard[data-unavailable="true"] .nodeTitle button { color: var(--muted); }
+.nodeCard[data-unavailable="true"] .nodeType svg { color: var(--muted) !important; }
+.nodeCard[data-unavailable="true"] .preview { opacity: .45; filter: grayscale(1); }
+.nodeHead { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 28px; flex-shrink: 0; font-size: 11px; line-height: 16px; font-weight: 600; color: var(--muted); }
+.nodeType, .nodeStatus { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.nodeType { min-width: 0; }
+.nodeTypeName { overflow: hidden; text-overflow: ellipsis; }
+.nodeStatus { flex-shrink: 0; }
+.nodeHead svg { width: 14px; height: 14px; flex-shrink: 0; }
+.nodeTitle { font-size: 15px; line-height: 22px; font-weight: 600; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); flex-shrink: 0; }
+.preview { flex: 1; min-height: 0; width: 100%; position: relative; border-radius: 8px; background: var(--bg); overflow: hidden; }
+.parameters { color: var(--muted); font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.progress { height: 2px; background: var(--line); overflow: hidden; flex-shrink: 0; }
+.progress > span { display: block; height: 100%; background: var(--running); }
+.port { opacity: .7; }
+.port:hover { opacity: 1; }
+.assistantShell { width: 361px !important; height: 100%; z-index: 60; }
+.assistantShell[data-closing="true"] { width: 0 !important; }
+.assistantPanel { width: 360px !important; max-width: calc(100vw - 24px); }
+.assistantHead { min-height: 56px; flex-shrink: 0; }
+@media (max-width: 1279px) { .assistantShell { position: absolute; inset: 0 0 0 auto; max-width: calc(100vw - 24px); } }
+@media (max-width: 1000px) { .saveStatus { display: none; } .tab { max-width: 144px; } }
+@media (max-width: 600px) { .topbar { gap: 4px; padding-inline: 8px; } .tab { min-width: 60px; padding-inline: 8px; } .dock { gap: 0; padding-inline: 4px; } .fitLabel { display: none; } }
+@media (prefers-reduced-motion: reduce) { .workspace :global(.studio-spin) { animation: none; } }

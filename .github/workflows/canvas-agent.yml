@@ -1,0 +1,25 @@
+name: canvas-agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "canvas-agent/package.json"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm publish
+        working-directory: canvas-agent

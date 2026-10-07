@@ -1,0 +1,13 @@
+.next/
+out/
+node_modules/
+.env*
+!.env.example
+!deploy/.env.production.example
+data/
+/director/
+*.log
+*.tsbuildinfo
+web/public/InfiniteCanvas-ComfyBridge*
+.DS_Store
+.idea

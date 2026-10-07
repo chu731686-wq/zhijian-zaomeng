@@ -1,0 +1,34 @@
+{
+    "generator": "built-in image_gen",
+    "style": "Original cinematic animated drama; low saturation; ink-black shadows; single person; no text or watermark",
+    "assets": [
+        {
+            "file": "home-hero.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named home-hero. 16:9 landscape cinematic original Chinese animated drama still. A solitary young woman with dark windswept hair and muted traditional robes in an ancient courtyard at night, rain, distant lanterns. Character at right of frame, left side quiet deep shadows. Refined hand painted anime, desaturated warm gray, ink black shadows, subtle coral fabric accent. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        },
+        {
+            "file": "template-mystery.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named template-mystery. 3:4 portrait poster artwork. Original ancient Chinese mystery drama: one young female investigator in dark layered hanfu, holding a lantern in a foggy old alley, quiet tension, weathered architecture. Refined hand painted anime, low saturation, black shadows, restrained warm lantern light. Face in upper half, bottom reserved dark scenery. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        },
+        {
+            "file": "template-romance.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named template-romance. 3:4 portrait poster artwork. Original urban emotional animated drama: one thoughtful young adult woman by a rain covered cafe window at night, city bokeh, simple cream coat, restrained emotion. Refined hand painted anime, low saturation, ink black shadows, quiet warm highlights. Face in upper half, bottom reserved dark scenery. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        },
+        {
+            "file": "template-scifi.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named template-scifi. 3:4 portrait poster artwork. Original science fiction adventure animated drama: a solitary young explorer with short dark hair and a practical space jacket on an abandoned orbital station, mysterious planet through window, cinematic vast scale. Refined hand painted anime, desaturated slate and beige, deep black shadows, no neon. Character upper middle, lower area quiet. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        },
+        {
+            "file": "project-mystery.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named project-mystery. 16:10 landscape thumbnail. Original Chinese mystery animated drama still: one young male investigator in muted traditional robes, close medium shot in rain outside ancient palace, calm determined gaze, subtle amber side light. Refined hand painted anime, desaturated warm gray, ink black shadows. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        },
+        {
+            "file": "project-romance.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named project-romance. 16:10 landscape thumbnail. Original urban emotional animated drama still: one young adult woman in profile on a quiet rooftop at dusk, wind in hair, distant apartment lights, reflective mood. Refined hand painted anime, muted gray blue and warm beige, ink black shadows. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        },
+        {
+            "file": "project-scifi.png",
+            "prompt": "Use case: stylized-concept. Asset type: production website sample artwork named project-scifi. 16:10 landscape thumbnail. Original science fiction adventure animated drama still: one young astronaut standing inside a derelict spaceship, soft light from a planet outside, subtle worn suit details, cinematic composition. Refined hand painted anime, desaturated slate, deep black shadows, no neon. Single person focus. One image only. No text, no typography, no watermark, no logo, no collage. Keep a unified refined cinematic animated drama style."
+        }
+    ]
+}

@@ -1,0 +1,38 @@
+services:
+  caddy:
+    image: caddy:2
+    container_name: infinite-canvas-caddy
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      - app
+
+  app:
+    # 用我们自己的代码打包（不要换回原作者的公开镜像，那是没有我们改动的旧版）
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: zhijian-zaomeng:local
+    pull_policy: never
+    container_name: infinite-canvas
+    env_file:
+      - .env.production
+    # .env.production is passed through by env_file, including GITHUB_CLIENT_ID,
+    # GITHUB_CLIENT_SECRET, and GITHUB_REDIRECT_URL when configured there.
+    expose:
+      - "3000"
+    volumes:
+      - ../data:/app/data
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
