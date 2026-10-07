@@ -1,5 +1,6 @@
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { createServer } from "node:http";
@@ -388,6 +389,7 @@ async function deleteProject() {
             remainingProjectIds.push(project.id);
             continue;
         }
+        const matchingCount = await page.getByRole("button", { name: `打开${project.title}`, exact: true }).count();
         await card.getByRole("button", { name: `${project.title}更多操作`, exact: true }).click();
         await page.getByRole("menuitem", { name: "删除项目", exact: true }).click();
         await page.getByRole("button", { name: "确认删除", exact: true }).click();
@@ -395,7 +397,7 @@ async function deleteProject() {
         // 重载确认持久化删除，而非只消失在当前渲染中。
         await page.reload({ waitUntil: "domcontentloaded" });
         await page.getByRole("button", { name: "新建项目", exact: true }).first().waitFor();
-        assert.equal(await page.getByRole("button", { name: `打开${project.title}`, exact: true }).count(), 0, `测试画布删除未持久化：${project.id}`);
+        assert.equal(await page.getByRole("button", { name: `打开${project.title}`, exact: true }).count(), matchingCount - 1, `测试画布删除未持久化：${project.id}`);
         const index = createdProjects.findIndex((item) => item.id === project.id);
         if (index >= 0) createdProjects.splice(index, 1);
     }
@@ -1204,6 +1206,85 @@ const checks = [
             } finally {
                 await guestContext.close();
             }
+        },
+    ],
+    [
+        "㉘ 带图片的画布导出再导入，图片完整",
+        async () => {
+            const count = await nodes().count();
+            await page.evaluate(async () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 300;
+                canvas.height = 200;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) throw new Error("PNG 画布初始化失败");
+                ctx.fillStyle = "#4f80d8";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                const blob = await new Promise((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("PNG 生成失败")), "image/png"));
+                const data = new DataTransfer();
+                data.items.add(new File([blob], "export-test.png", { type: "image/png" }));
+                const x = innerWidth / 2, y = innerHeight / 2;
+                const target = document.elementFromPoint(x, y);
+                for (const type of ["dragenter", "dragover", "drop"]) target.dispatchEvent(new DragEvent(type, { dataTransfer: data, bubbles: true, cancelable: true, clientX: x, clientY: y }));
+            });
+            await eventually(async () => (await nodes().count()) > count && (await nodes().locator("img").count()) > 0, "拖入 PNG 未生成图片节点");
+            const imageId = await nodes().evaluateAll((es) => es.find((el) => el.querySelector("img"))?.dataset.nodeId);
+            assert(imageId, "找不到包含图片的节点");
+            const img = node(imageId).locator("img").first();
+            await eventually(async () => (await img.evaluate((el) => el.naturalWidth)) === 300, "图片原始宽度不是 300");
+            // 等图片存到服务器（节点图片地址变成 /api/files/…）
+            await eventually(async () => (await img.getAttribute("src") || "").includes("/api/files/"), "图片 15 秒内没存到服务器", 15000);
+
+            // 模拟换一台电脑登录：清掉本机画布缓存，让画布完全从服务器读回（此时图片引用是 server:）
+            await page.waitForTimeout(3000);
+            await page.goto(`${baseURL}/canvas`, { waitUntil: "networkidle" });
+            await page.evaluate(async () => {
+                const db = await new Promise((resolve, reject) => { const request = indexedDB.open("infinite-canvas"); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+                const store = db.transaction("app_state", "readwrite").objectStore("app_state");
+                const keys = await new Promise((resolve) => { const request = store.getAllKeys(); request.onsuccess = () => resolve(request.result); });
+                const tx = db.transaction("app_state", "readwrite");
+                keys.filter((key) => String(key).startsWith("infinite-canvas:canvas_store:account:")).forEach((key) => tx.objectStore("app_state").delete(key));
+                await new Promise((resolve) => { tx.oncomplete = resolve; });
+                db.close();
+            });
+            await page.goto(`${baseURL}/canvas`, { waitUntil: "networkidle" });
+            const card = page.locator("article").filter({ has: page.getByRole("button", { name: `打开${projectTitle}`, exact: true }) }).first();
+            await card.waitFor({ state: "visible" });
+            await card.getByRole("button", { name: `${projectTitle}更多操作`, exact: true }).click();
+            const downloadPromise = page.waitForEvent("download");
+            await page.getByRole("menuitem", { name: "导出项目", exact: true }).click();
+            const download = await downloadPromise;
+            const exportPath = `${screens}export-test.zip`;
+            await download.saveAs(exportPath);
+            // 读压缩包清单：每个存在服务器上的素材（server:）都必须随包导出，否则换账号/换网站导入后会空图
+            const exported = JSON.parse(execFileSync("unzip", ["-p", exportPath, "projects.json"]).toString());
+            const exportedProject = exported.projects[0];
+            const serverKeys = new Set();
+            const collectKeys = (value) => {
+                if (Array.isArray(value)) return value.forEach(collectKeys);
+                if (!value || typeof value !== "object") return;
+                if (typeof value.storageKey === "string" && value.storageKey.startsWith("server:")) serverKeys.add(value.storageKey);
+                Object.values(value).forEach(collectKeys);
+            };
+            collectKeys(exportedProject.project.nodes);
+            assert(serverKeys.size > 0, "图片还没存到服务器（storageKey 不是 server:），测不到导出问题");
+            const packedKeys = new Set((exportedProject.files || []).map((item) => item.storageKey));
+            const missing = [...serverKeys].filter((key) => !packedKeys.has(key));
+            assert.equal(missing.length, 0, `导出压缩包缺少 ${missing.length} 个服务器素材`);
+            const listing = execFileSync("unzip", ["-l", exportPath]).toString();
+            assert((exportedProject.files || []).every((item) => listing.includes(item.path)), "压缩包清单里的素材文件实际不存在");
+
+            await page.getByRole("button", { name: "导入画布", exact: true }).click();
+            await page.locator('input[type="file"]').setInputFiles(exportPath);
+            await page.getByText("已导入 1 个画布", { exact: true }).waitFor({ state: "visible" });
+            const importedCard = page.locator("article").first();
+            const importedOpen = importedCard.getByRole("button", { name: `打开${projectTitle}`, exact: true });
+            await importedOpen.waitFor({ state: "visible" });
+            await importedOpen.click();
+            await page.waitForURL(/\/canvas\/[^/?]+$/);
+            const importedId = new URL(page.url()).pathname.split("/").at(-1);
+            createdProjects.push({ id: importedId, title: projectTitle });
+            await eventually(async () => await nodes().locator("img").evaluateAll((els) => els.some((el) => el.naturalWidth === 300)), "导入后的图片没显示", 15000);
         },
     ],
 ];

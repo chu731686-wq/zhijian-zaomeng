@@ -5,12 +5,10 @@ import { App, Dropdown, Input } from "antd";
 import { Download, FileUp, FolderOpen, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { readZip } from "@/lib/zip";
-import { setMediaBlob } from "@/services/file-storage";
-import { setImageBlob } from "@/services/image-storage";
 import { useCanvasStore, type CanvasProject } from "./stores/use-canvas-store";
 import { ProjectThumbnail, projectSummary } from "@/components/home/home-projects";
 import type { CanvasExportFile } from "./export-types";
-import { exportCanvasProjects } from "./utils/canvas-export";
+import { exportCanvasProjects, restoreCanvasProject } from "./utils/canvas-export";
 
 function updatedLabel(value: string) {
     const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 60000));
@@ -37,13 +35,8 @@ export default function CanvasPage() {
             const projectFile = zip.get("projects.json");
             if (!projectFile) throw new Error("missing projects.json");
             const data = JSON.parse(await projectFile.text()) as CanvasExportFile;
-            await Promise.all(data.projects.flatMap((project) => project.files.map(async (item) => {
-                const blob = zip.get(item.path);
-                if (!blob) return;
-                const typedBlob = blob.type ? blob : blob.slice(0, blob.size, item.mimeType);
-                await (item.storageKey.startsWith("image:") ? setImageBlob(item.storageKey, typedBlob) : setMediaBlob(item.storageKey, typedBlob));
-            })));
-            data.projects.forEach((item) => importProject(item.project));
+            const projects = await Promise.all(data.projects.map((item) => restoreCanvasProject(item.project, item.files, zip)));
+            projects.forEach(importProject);
             message.success(`已导入 ${data.projects.length} 个画布`);
         } catch {
             message.error("导入失败，请选择有效的画布压缩包");
