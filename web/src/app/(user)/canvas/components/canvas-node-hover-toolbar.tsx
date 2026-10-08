@@ -147,6 +147,7 @@ export function CanvasNodeHoverToolbar({
         }
         copyText(prompt, "提示词已复制");
     };
+    const putInTeamAssets = () => window.dispatchEvent(new CustomEvent("canvas:team-asset-request", { detail: { nodeId: node.id } }));
     const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onMaskEdit, onCrop, onSplit, onUpscale, onSuperResolve, onAngle, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt }).filter((tool) => !isPanorama || tool.id !== "replace");
 
     function openImageToolSettings() {
@@ -239,6 +240,7 @@ export function CanvasNodeHoverToolbar({
                 <ToolbarAction id="delete" title="删除节点" label="删除" icon={<Trash2 className="size-4" />} onClick={() => onDelete(node)} showLabel danger />
                 <Dropdown trigger={["click"]} menu={{ items: [
                     ...toolbarTools.filter((tool) => tool.id !== "delete" && tool.id !== "download").map((tool) => ({ key: tool.id, label: tool.label, icon: tool.icon, onClick: tool.onClick })),
+                    ...(hasImage || hasVideo || hasAudio || isText ? [{ key: "putInTeamAssets", label: "放进团队资产库", icon: <FolderPlus size={16} />, onClick: putInTeamAssets }] : []),
                     ...(hasImage ? [{ key: "settings", label: "配置快捷工具", icon: <Settings2 size={16} />, onClick: openImageToolSettings }] : []),
                 ] }}><Tooltip title="更多操作" placement="top" mouseEnterDelay={0.2} classNames={{ root: "canvas-node-toolbar-tooltip" }}><button type="button" className="group relative flex h-9 items-center whitespace-nowrap text-subtle" aria-label="更多节点操作"><span className="flex h-8 items-center justify-center rounded-lg px-2 transition group-hover:bg-hover"><Ellipsis size={16} /></span></button></Tooltip></Dropdown>
             </div>

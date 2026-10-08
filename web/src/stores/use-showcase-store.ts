@@ -38,7 +38,10 @@ export const useShowcaseStore = create<ShowcaseStore>((set, get) => ({
         if (published) {
             const latest = useCanvasStore.getState().projects.find((item) => item.id === project.id);
             if (!latest) throw new Error("画布项目不存在");
-            await saveCanvasProject(token, await syncMediaReferences(latest, token));
+            if (!latest.team_id) {
+                const prepared = await syncMediaReferences(latest, token);
+                if (!useCanvasStore.getState().projects.find((item) => item.id === project.id)?.team_id) await saveCanvasProject(token, prepared);
+            }
         }
         await setProjectPublished(project.id, published, token);
         await get().refresh();

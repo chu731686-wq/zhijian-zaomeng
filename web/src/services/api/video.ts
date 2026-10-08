@@ -1,3 +1,4 @@
+import { isTeamConfig, resolveTeamRequestURL, teamRequestHeaders, teamProtectedMediaURL } from "./team-proxy";
 import axios from "axios";
 
 import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
@@ -37,6 +38,7 @@ export class VideoRequestError extends Error {
 }
 
 function usesAccountProxy(config: AiConfig) {
+    if (isTeamConfig(config)) return false;
     const token = useUserStore.getState().token;
     return config.channelMode === "remote" || (config.channelMode === "local" && Boolean(token));
 }
@@ -44,13 +46,13 @@ function usesAccountProxy(config: AiConfig) {
 function aiApiUrl(config: AiConfig, path: string) {
     if (usesAccountProxy(config)) return `/api/v1${path}`;
     const channel = localChannelForActiveModel(config);
-    return buildApiUrl(channel?.baseUrl || config.baseUrl, path);
+    return resolveTeamRequestURL(config, buildApiUrl(channel?.baseUrl || config.baseUrl, path));
 }
 
 function aiVideoPollUrl(config: AiConfig, model: string, id: string) {
     if (!usesAccountProxy(config) && isGeminiConfig(config, model)) {
         const channel = localChannelForActiveModel(config);
-        return geminiOperationUrl(channel?.baseUrl || config.baseUrl, id);
+        return resolveTeamRequestURL(config, geminiOperationUrl(channel?.baseUrl || config.baseUrl, id));
     }
     if (!usesAccountProxy(config) && isMiniMaxH3Config(config, model)) {
         return miniMaxApiUrl(config, `/v2/query/video_generation/${encodeURIComponent(id)}`);
@@ -66,12 +68,12 @@ function aiVideoPollUrl(config: AiConfig, model: string, id: string) {
     }
     const channel = localChannelForActiveModel(config);
     const baseUrl = agnesBaseUrl(channel?.baseUrl || config.baseUrl);
-    return `${baseUrl}/agnesapi?video_id=${encodeURIComponent(id)}&model_name=${encodeURIComponent(model)}`;
+    return resolveTeamRequestURL(config, `${baseUrl}/agnesapi?video_id=${encodeURIComponent(id)}&model_name=${encodeURIComponent(model)}`);
 }
 
 function miniMaxApiUrl(config: AiConfig, path: string) {
     const channel = localChannelForActiveModel(config);
-    return `${(channel?.baseUrl || config.baseUrl).trim().replace(/\/+$/, "")}${path}`;
+    return resolveTeamRequestURL(config, `${(channel?.baseUrl || config.baseUrl).trim().replace(/\/+$/, "")}${path}`);
 }
 
 function agnesBaseUrl(baseUrl: string) {
@@ -80,6 +82,7 @@ function agnesBaseUrl(baseUrl: string) {
 }
 
 function aiHeaders(config: AiConfig) {
+    if (isTeamConfig(config)) return { ...teamRequestHeaders("application/json"), ...modelChannelAttributionHeaders(channelProtocolForConfig(config)) };
     const token = useUserStore.getState().token;
     if (config.channelMode === "remote" && !token) throw new Error("请先登录后再使用云端渠道");
     if (config.channelMode === "remote") return { Authorization: `Bearer ${token}`, ...(channelIdForActiveModel(config) ? { "X-Model-Channel-ID": channelIdForActiveModel(config) } : {}) };
@@ -123,7 +126,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
         const directProvider = !accountProxy ? directAIProviderForConfig(config) : null;
         const channel = localChannelForActiveModel(config);
         const createUrl = !accountProxy && isGeminiConfig(config, model)
-            ? geminiActionUrl(channel?.baseUrl || config.baseUrl, model, "predictLongRunning")
+            ? resolveTeamRequestURL(config, geminiActionUrl(channel?.baseUrl || config.baseUrl, model, "predictLongRunning"))
             : !accountProxy && isMiniMaxH3Config(config, model)
                 ? miniMaxApiUrl(config, "/v2/video_generation")
                 : aiApiUrl(config, !accountProxy && (isGrok2APIVideoConfig(config, model) || isCogVideoX3Model(model)) ? "/videos/generations" : "/videos");
@@ -236,7 +239,7 @@ async function cacheProtectedVideo(config: AiConfig, model: string, task: VideoR
     const needsGrokContent = isGrok2APIVideoConfig(config, model) && /\/v1\/videos\/[^/]+\/content(?:[?#]|$)/.test(url);
     if (!isCompletedVideoStatus(task.status) || task.storageKey || (!needs88APIContent && !needsGrokContent)) return task;
     const taskId = task.task_id || task.id || task.video_id || "";
-    const response = await fetch(`${aiApiUrl(config, `/videos/${encodeURIComponent(taskId)}/content`)}?model=${encodeURIComponent(model)}`, { headers: aiHeaders(config) });
+    const response = await fetch(`${aiApiUrl(config, `/videos/${encodeURIComponent(taskId)}/content`)}${isTeamConfig(config) ? "&" : "?"}model=${encodeURIComponent(model)}`, { headers: aiHeaders(config) });
     if (!response.ok) throw new VideoRequestError(`视频内容下载失败：${response.status}`, task);
     const media = await uploadMediaFile(await response.blob(), "generated-video", `video-content:${videoSyncKey(config, task)}`);
     return { ...task, url: media.url, video_url: media.url, storageKey: media.storageKey };
@@ -326,7 +329,7 @@ async function create88APIVideoRequestBody(config: AiConfig, model: string, prom
 
 async function createVideoRequestBody(config: AiConfig, model: string, prompt: string, input: Required<VideoReferenceInput>) {
     if (videoChannelProtocol(config, model) === "autodl") {
-        const capabilities = getAutoDLCapabilities(await fetchAutoDLWorkflow(autoDLBaseUrl(config, model), model));
+        const capabilities = getAutoDLCapabilities(await fetchAutoDLWorkflow(autoDLBaseUrl(config, model), model, config));
         if (!capabilities) throw new VideoRequestError("当前 AutoDL 工作流尚未适配");
         const { autoDLReferenceURL } = await import("./direct-ai");
         const [images, videos, audios, firstFrame, lastFrame] = await Promise.all([
@@ -913,7 +916,7 @@ async function cacheProtectedGeminiVideo(config: AiConfig, model: string, task: 
     if (!isGeminiConfig(config, model) || !isCompletedVideoStatus(task.status) || task.storageKey || !url) return task;
     const localTaskId = task.id || task.task_id || "";
     const response = await fetch(
-        usesAccountProxy(config) ? `${aiApiUrl(config, `/videos/${encodeURIComponent(localTaskId)}/content`)}?model=${encodeURIComponent(model)}` : url,
+        usesAccountProxy(config) ? `${aiApiUrl(config, `/videos/${encodeURIComponent(localTaskId)}/content`)}?model=${encodeURIComponent(model)}` : teamProtectedMediaURL(config, url),
         { headers: usesAccountProxy(config) ? aiHeaders(config) : geminiDirectHeaders(config) },
     );
     if (!response.ok) throw new VideoRequestError(`视频内容下载失败：${response.status}`, task);
@@ -941,7 +944,7 @@ function readAxiosError(error: unknown, fallback: string) {
 }
 
 async function writeVideoAICallLog(config: AiConfig, model: string, endpoint: string, method: "GET" | "POST", startedAt: number, status: number, requestBody: string, responseBody: string, error: string) {
-    if (config.channelMode !== "local" || usesAccountProxy(config)) return;
+    if (isTeamConfig(config) || config.channelMode !== "local" || usesAccountProxy(config)) return;
     const token = useUserStore.getState().token;
     if (!token) return;
     const channel = localChannelForActiveModel(config);

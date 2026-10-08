@@ -7,7 +7,7 @@ export function isAutoDLConfig(config: AiConfig, model = config.model) {
 
 export function autoDLBaseUrl(config: AiConfig, model = config.model) {
     const active = { ...config, model };
-    const channel = active.channelMode === "remote"
+    const channel = active.channelMode === "remote" && !channelIdForActiveModel(active).startsWith("team:")
         ? active.publicChannels.find((item) => item.id === channelIdForActiveModel(active)) || active.publicChannels[0]
         : localChannelForActiveModel(active);
     return (channel?.baseUrl || "https://autodl.art").trim().replace(/\/+$/, "");

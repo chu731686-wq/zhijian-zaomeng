@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Cpu } from "lucide-react";
 
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { useAutoDLWorkflowNames } from "@/hooks/use-autodl-workflow";
 import { isWorkflowProtocol } from "@/lib/model-channel";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,7 @@ export function ModelPicker({ config, value, channelId, capability, onChange, wo
             config.channelMode === "remote"
                 ? config.publicChannels.map((channel) => ({ id: channel.id, protocol: channel.protocol, name: channel.name || "云端渠道", baseUrl: channel.baseUrl, models: channel.models, workflows: channel.workflows || [] }))
                 : normalizeLocalChannels(config).map((channel) => ({ id: channel.id, protocol: channel.protocol, name: channel.name || "本地渠道", baseUrl: channel.baseUrl, models: channel.models, workflows: channel.workflowSummaries || [] }));
+        channels.push(...(config.teamChannels || []).map((channel) => ({ ...channel, workflows: [] })));
         const models = channels
             .filter((channel) => !isWorkflowProtocol(channel.protocol || ""))
             .flatMap((channel) => (channel.models ?? []).map((model) => ({ key: `${channel.id}::${model}`, channelId: channel.id, channelName: channel.name, protocol: channel.protocol, baseUrl: channel.baseUrl, model })));
@@ -73,7 +74,7 @@ export function ModelPicker({ config, value, channelId, capability, onChange, wo
     const currentOption = useMemo<PickerOption | undefined>(() => {
         if (workflowRef && workflowEnabled) return channelOptions.find((item) => "workflowRef" in item && item.key === `workflow:${JSON.stringify([workflowRef.scope, workflowRef.channelId, workflowRef.kind, workflowRef.workflowId])}`);
         if (!value) return undefined;
-        return channelOptions.find((item) => item.model === value && item.channelId === channelId) || channelOptions.find((item) => item.model === value);
+        return channelOptions.find((item) => item.model === value && item.channelId === channelId) || (channelId?.startsWith("team:") ? undefined : channelOptions.find((item) => item.model === value));
     }, [channelId, channelOptions, value, workflowEnabled, workflowRef]);
     const options = channelOptions;
     const current = workflowRef && workflowEnabled ? (currentOption && "workflowRef" in currentOption ? currentOption.label : "") : value || "";
@@ -145,11 +146,13 @@ export function ModelPicker({ config, value, channelId, capability, onChange, wo
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 {options.length ? (
-                    options.map((option) => (
+                    [false, true].map((teamGroup) => <SelectGroup key={String(teamGroup)}>
+                        {teamGroup && options.some((option) => option.channelId?.startsWith("team:")) && <SelectLabel>团队：{config.teamContext?.teamName}</SelectLabel>}
+                        {options.filter((option) => Boolean(option.channelId?.startsWith("team:")) === teamGroup).map((option) => (
                         <SelectItem key={option.key} value={option.key} textValue={`${"workflowRef" in option ? option.label : modelLabel(option.model, option)} ${option.model} ${option.channelName}`}>
                             <ModelLabel model={"workflowRef" in option ? option.workflowRef.workflowId : option.model} label={"workflowRef" in option ? `工作流 · ${option.label}` : modelLabel(option.model, option)} channelName={option.channelName} />
                         </SelectItem>
-                    ))
+                    ))}</SelectGroup>)
                 ) : (
                     <SelectItem value="__empty__" disabled>
                         {config.channelMode === "remote" ? "暂无可用模型" : "请先到配置里拉取模型列表"}

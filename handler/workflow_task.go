@@ -21,7 +21,7 @@ func CreateWorkflowTask(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := service.CreateWorkflowTask(r.Context(), user, input)
 	if err != nil {
-		FailError(w, err)
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, result)

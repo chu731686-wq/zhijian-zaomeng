@@ -10,7 +10,7 @@ import (
 func UserCanvasProjects(w http.ResponseWriter, r *http.Request) {
 	projects, err := service.CurrentUserCanvasProjects(r.Context())
 	if err != nil {
-		FailError(w, err)
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, projects)
@@ -18,7 +18,8 @@ func UserCanvasProjects(w http.ResponseWriter, r *http.Request) {
 
 func SaveUserCanvasProject(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Data json.RawMessage `json:"data"`
+		Data   json.RawMessage `json:"data"`
+		TeamID string          `json:"team_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
 		len(request.Data) == 0 {
@@ -26,12 +27,15 @@ func SaveUserCanvasProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := service.SaveCurrentUserCanvasProject(
-		r.Context(),
-		request.Data,
-	)
+	var project json.RawMessage
+	var err error
+	if request.TeamID != "" {
+		project, err = service.SaveCurrentTeamCanvasProject(r.Context(), request.TeamID, request.Data)
+	} else {
+		project, err = service.SaveCurrentUserCanvasProject(r.Context(), request.Data)
+	}
 	if err != nil {
-		FailError(w, err)
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, project)
@@ -51,7 +55,7 @@ func SyncUserCanvasProjects(w http.ResponseWriter, r *http.Request) {
 		request.Projects,
 	)
 	if err != nil {
-		FailError(w, err)
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, projects)

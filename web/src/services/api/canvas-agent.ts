@@ -1,3 +1,4 @@
+import { isTeamConfig, resolveTeamRequestURL } from "./team-proxy";
 import { mimoTextModels } from "@/lib/mimo-tts";
 import { dataUrlToGeminiInlineData, geminiActionUrl, geminiDirectHeaders, geminiErrorMessage, isGeminiConfig } from "@/lib/gemini";
 import { aiApiUrl, aiHeaders, ImageRequestError, isEventStreamResponse, readJsonServerSentEvents, refreshRemoteUser } from "@/services/api/image";
@@ -393,10 +394,10 @@ async function requestGeminiCompletion(config: CanvasAgentAiConfig, systemPrompt
         ...(jsonSchema ? { generationConfig: { responseFormat: { text: { mimeType: "application/json", schema: jsonSchema } } } } : {}),
     };
     applyCanvasAgentReasoning(body, config, "gemini");
-    const proxy = Boolean(aiApiUrl(config, "/chat/completions").startsWith("/api/"));
+    const proxy = !isTeamConfig(config) && Boolean(aiApiUrl(config, "/chat/completions").startsWith("/api/"));
     const channel = localChannelForActiveModel(config);
     const { model: _model, stream: _stream, ...nativeBody } = body;
-    const response = await fetch(proxy ? aiApiUrl(config, "/chat/completions") : geminiActionUrl(channel?.baseUrl || config.baseUrl, config.model, config.textStreaming ? "streamGenerateContent" : "generateContent"), {
+    const response = await fetch(proxy ? aiApiUrl(config, "/chat/completions") : resolveTeamRequestURL(config, geminiActionUrl(channel?.baseUrl || config.baseUrl, config.model, config.textStreaming ? "streamGenerateContent" : "generateContent")), {
         method: "POST",
         headers: proxy ? aiHeaders(config, "application/json") : geminiDirectHeaders(config),
         body: JSON.stringify(proxy ? body : nativeBody),

@@ -67,6 +67,9 @@ type VideoTaskPollUpdate struct {
 type VideoTaskPollFunc func(model.VideoTask) (VideoTaskPollUpdate, error)
 
 func CreateVideoTask(input VideoTaskCreateInput) (model.VideoTask, error) {
+	if err := AuthorizeCanvasGeneration(strings.TrimSpace(input.UserID), normalizeVideoTaskSource(input.Source), strings.TrimSpace(input.SourceID)); err != nil {
+		return model.VideoTask{}, err
+	}
 	current := now()
 	status := NormalizeVideoTaskStatus(input.Status)
 	if status == "" {
@@ -107,6 +110,7 @@ func CreateVideoTask(input VideoTaskCreateInput) (model.VideoTask, error) {
 		task.Status = "failed"
 		task.CompletedAt = current
 	}
+	persistTeamVideoTask(&task)
 	var saved model.VideoTask
 	var err error
 	if input.WorkflowRef != "" {
@@ -367,6 +371,7 @@ func UpdateVideoTaskFromPoll(task model.VideoTask, update VideoTaskPollUpdate) e
 		task.Status = "failed"
 		task.CompletedAt = current
 	}
+	persistTeamVideoTask(&task)
 	_, err := repository.SaveVideoTask(task)
 	return err
 }

@@ -46,6 +46,7 @@ export type UserWebDAVStorageProvider = UserStorageProviderBase & {
 export type UserStorageProvider = UserS3StorageProvider | UserWebDAVStorageProvider;
 
 type UploadImageOptions = {
+    team?: boolean;
     localOnly?: boolean;
     token?: string;
 };
@@ -190,6 +191,14 @@ export async function uploadImage(input: string | Blob, options: UploadImageOpti
         blob = await response.blob();
     } else {
         blob = url;
+    }
+    if (options.team) {
+        const { uploadTeamCanvasFile } = await import("./file-storage");
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+            const [uploaded, meta] = await Promise.all([uploadTeamCanvasFile(blob, options.token || useUserStore.getState().token), readImageMeta(objectUrl)]);
+            return { ...uploaded, width: meta.width, height: meta.height };
+        } finally { URL.revokeObjectURL(objectUrl); }
     }
     if (!options.localOnly && useUserStore.getState().token) {
         const serverUpload = await maybeUploadImageToServer(blob, options.token);

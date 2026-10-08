@@ -24,7 +24,7 @@ export async function findLocalAccountImport(token: string): Promise<LocalAccoun
     const projectIds = new Set(projects.map((project) => project.id));
     const assetIds = new Set(assets.assets.map((asset) => asset.id));
     return {
-        projects: (localCanvas?.projects || []).filter((project) => !projectIds.has(project.id)),
+        projects: (localCanvas?.projects || []).filter((project) => !project.team_id && !projectIds.has(project.id)),
         assets: (localAssets?.assets || []).filter((asset) => !assetIds.has(asset.id) && !assets.deletedAssets?.[asset.id]),
     };
 }
@@ -37,12 +37,17 @@ export async function importLocalAccountData(token: string, onProgress: (done: n
     onProgress(done, total);
     for (let index = 0; index < local.projects.length; index += 10) {
         const batch = [];
-        for (const project of local.projects.slice(index, index + 10)) batch.push(await syncMediaReferences(project, token));
+        for (const project of local.projects.slice(index, index + 10)) {
+            if (!useCanvasStore.getState().projects.find((item) => item.id === project.id)?.team_id) batch.push(await syncMediaReferences(project, token));
+        }
         checkSession(token);
-        const saved = await syncCanvasProjects(token, batch);
-        checkSession(token);
-        useCanvasStore.setState((state) => ({ projects: mergeCanvasProjects(saved, state.projects).filter((project) => !state.deletedProjectIds.includes(project.id)) }));
-        done += batch.length;
+        const personalBatch = batch.filter((project) => !useCanvasStore.getState().projects.find((item) => item.id === project.id)?.team_id);
+        if (personalBatch.length) {
+            const saved = await syncCanvasProjects(token, personalBatch);
+            checkSession(token);
+            useCanvasStore.setState((state) => ({ projects: mergeCanvasProjects(saved, state.projects).filter((project) => !state.deletedProjectIds.includes(project.id)) }));
+        }
+        done += Math.min(10, local.projects.length - index);
         onProgress(done, total);
     }
     for (let index = 0; index < local.assets.length; index += 20) {

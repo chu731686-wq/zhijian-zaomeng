@@ -29,6 +29,9 @@ type CanvasAudioTaskCreateInput struct {
 }
 
 func CreateCanvasAudioTask(input CanvasAudioTaskCreateInput) (model.CanvasAudioTask, error) {
+	if err := AuthorizeCanvasGeneration(strings.TrimSpace(input.UserID), "canvas", strings.TrimSpace(input.SourceID)); err != nil {
+		return model.CanvasAudioTask{}, err
+	}
 	current := now()
 	task := model.CanvasAudioTask{
 		ID:              firstVideoTaskValue(input.ClientTaskID, "canvas_audio_task_"+uuid.NewString()),
@@ -63,6 +66,19 @@ func GetUserCanvasAudioTask(userID string, id string) (model.CanvasAudioTask, bo
 }
 
 func SaveCanvasAudioTask(task model.CanvasAudioTask) (model.CanvasAudioTask, error) {
+	if task.Status == "completed" && task.StorageKey == "" {
+		object, shared, err := persistTeamMedia(task.UserID, task.Source, task.SourceID, task.AudioURL, task.MimeType)
+		if err != nil {
+			task.Status = "failed"
+			task.Error = "团队生成文件保存失败"
+			task.ErrorDetail = err.Error()
+		} else if shared {
+			task.AudioURL = object.URL
+			task.StorageKey = object.StorageKey
+			task.MimeType = object.MimeType
+			task.Bytes = object.Bytes
+		}
+	}
 	task.UpdatedAt = now()
 	return repository.UpdateCanvasAudioTask(task)
 }

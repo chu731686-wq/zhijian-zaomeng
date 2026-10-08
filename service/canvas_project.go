@@ -33,8 +33,20 @@ func canvasProjectFromRaw(
 		metadata.UpdatedAt == "" {
 		return model.CanvasProject{}, errors.New("画布项目数据无效")
 	}
+	var data map[string]json.RawMessage
+	if json.Unmarshal(raw, &data) != nil || data == nil {
+		return model.CanvasProject{}, errors.New("画布项目数据无效")
+	}
+	for _, key := range canvasServerFields {
+		delete(data, key)
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return model.CanvasProject{}, err
+	}
 
 	return model.CanvasProject{
+		Revision:    1,
 		UserID:      strings.TrimSpace(userID),
 		ID:          metadata.ID,
 		ProjectData: string(raw),
@@ -51,7 +63,7 @@ func canvasProjectData(
 		if strings.TrimSpace(project.ProjectData) != "" {
 			result = append(
 				result,
-				json.RawMessage(project.ProjectData),
+				canvasPayload(project),
 			)
 		}
 	}
@@ -61,12 +73,14 @@ func canvasProjectData(
 func CurrentUserCanvasProjects(
 	ctx context.Context,
 ) ([]json.RawMessage, error) {
+	collabMu.Lock()
+	defer collabMu.Unlock()
 	user, ok := UserFromContext(ctx)
 	if !ok || user.ID == "" {
 		return nil, errors.New("请先登录")
 	}
 
-	projects, err := repository.ListUserCanvasProjects(user.ID)
+	projects, err := visibleCanvasProjects(user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +91,8 @@ func SaveCurrentUserCanvasProject(
 	ctx context.Context,
 	raw json.RawMessage,
 ) (json.RawMessage, error) {
+	collabMu.Lock()
+	defer collabMu.Unlock()
 	user, ok := UserFromContext(ctx)
 	if !ok || user.ID == "" {
 		return nil, errors.New("请先登录")
@@ -86,6 +102,9 @@ func SaveCurrentUserCanvasProject(
 	if err != nil {
 		return nil, err
 	}
+	if err := checkPersonalCanvasWrite(user.ID, project.ID); err != nil {
+		return nil, err
+	}
 	saved, err := repository.SaveUserCanvasProject(project)
 	if err != nil {
 		return nil, err
@@ -93,13 +112,16 @@ func SaveCurrentUserCanvasProject(
 	if saved.DeletedAt != "" {
 		return nil, errors.New("画布项目已删除")
 	}
-	return json.RawMessage(saved.ProjectData), nil
+	saved.CanEdit, saved.CanManageAccess = true, true
+	return canvasPayload(saved), nil
 }
 
 func SyncCurrentUserCanvasProjects(
 	ctx context.Context,
 	rawProjects []json.RawMessage,
 ) ([]json.RawMessage, error) {
+	collabMu.Lock()
+	defer collabMu.Unlock()
 	user, ok := UserFromContext(ctx)
 	if !ok || user.ID == "" {
 		return nil, errors.New("请先登录")
@@ -111,10 +133,17 @@ func SyncCurrentUserCanvasProjects(
 		if err != nil {
 			return nil, err
 		}
+		if err := checkPersonalCanvasWrite(user.ID, project.ID); err != nil {
+			return nil, err
+		}
 		projects = append(projects, project)
 	}
 
-	saved, err := repository.SaveUserCanvasProjects(user.ID, projects)
+	_, err := repository.SaveUserCanvasProjects(user.ID, projects)
+	if err != nil {
+		return nil, err
+	}
+	saved, err := visibleCanvasProjects(user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,14 +159,53 @@ func DeleteCurrentUserCanvasProjects(
 		return errors.New("请先登录")
 	}
 
-	for _, projectID := range projectIDs {
-		if strings.TrimSpace(projectID) != "" {
-			return repository.SoftDeleteUserCanvasProjects(
-				user.ID,
-				projectIDs,
-				time.Now().UTC().Format(time.RFC3339Nano),
-			)
+	collabMu.Lock()
+	defer collabMu.Unlock()
+	ids := []string{}
+	shared := []model.CanvasProject{}
+	for _, id := range projectIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		records, err := repository.FindCanvasProjects(id)
+		if err != nil {
+			return err
+		}
+		hasTeam := false
+		for _, p := range records {
+			if p.TeamID != nil {
+				hasTeam = true
+			}
+		}
+		if hasTeam {
+			p, err := canvasAccess(user.ID, id)
+			if err != nil {
+				return err
+			}
+			if err = canvasDeletePermission(user.ID, p); err != nil {
+				return err
+			}
+			shared = append(shared, p)
+		} else {
+			for _, project := range records {
+				if project.UserID == user.ID && project.DeletedAt == "" {
+					if err := canvasDeletePermission(user.ID, project); err != nil {
+						return err
+					}
+				}
+			}
+			ids = append(ids, id)
 		}
 	}
-	return errors.New("画布项目参数无效")
+	if len(ids) == 0 && len(shared) == 0 {
+		return errors.New("画布项目参数无效")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, p := range shared {
+		if err := repository.DeleteCanvasProject(p, now); err != nil {
+			return err
+		}
+	}
+	return repository.SoftDeleteUserCanvasProjects(user.ID, ids, now)
 }

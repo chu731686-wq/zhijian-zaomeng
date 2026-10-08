@@ -1,4 +1,5 @@
 "use client";
+import { useCanvasModelConfig } from "@/app/(user)/canvas/hooks/use-canvas-model-config";
 
 import { imagePreviewUrl } from "@/services/image-storage";
 
@@ -44,7 +45,7 @@ import { isWebSearchEnabled, useWebSearchPreference } from "@/stores/use-web-sea
 import { imageToDataUrl } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
-import { resolveModelForCapability, selectableModelsByCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { resolveModelForCapability, selectableModelsByCapability, useConfigStore, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { createCanvasAgentState, runCanvasAgent } from "../agent/canvas-agent-runtime";
 import { serializeCanvasAgentMessagesForCheckpoint } from "../agent/canvas-agent-memory";
@@ -169,7 +170,7 @@ export function CanvasAssistantPanel({
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const systemSkills = useAgentSkillStore((state) => state.systemSkills);
     const userSkills = useAgentSkillStore((state) => state.userSkills);
-    const effectiveConfig = useEffectiveConfig();
+    const effectiveConfig = useCanvasModelConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const cleanupImages = useAssetStore((state) => state.cleanupImages);
     const { message: appMessage } = App.useApp();

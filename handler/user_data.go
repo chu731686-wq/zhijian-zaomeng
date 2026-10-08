@@ -45,7 +45,11 @@ func DeleteUserCanvasProjects(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		request.IDs,
 	); err != nil {
-		Fail(w, err.Error())
+		if _, shared := err.(*service.CollabError); shared {
+			collabResult(w, nil, err)
+		} else {
+			Fail(w, err.Error())
+		}
 		return
 	}
 	OK(w, map[string]bool{"deleted": true})

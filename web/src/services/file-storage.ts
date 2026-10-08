@@ -17,8 +17,15 @@ const store = localforage.createInstance({ name: "infinite-canvas", storeName: "
 const objectUrls = new Map<string, string>();
 let storageConfigPromise: Promise<StorageConfig> | null = null;
 
-export async function uploadMediaFile(input: string | Blob, prefix = "file", syncId?: string, tokenOverride?: string): Promise<UploadedFile> {
+export async function uploadMediaFile(input: string | Blob, prefix = "file", syncId?: string, tokenOverride?: string, team = false): Promise<UploadedFile> {
     const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
+    if (team) {
+        const uploaded = await uploadTeamCanvasFile(blob, tokenOverride || useUserStore.getState().token);
+        if (!blob.type.startsWith("video/")) return uploaded;
+        const objectUrl = URL.createObjectURL(blob);
+        try { return { ...uploaded, ...await readVideoMeta(objectUrl) }; }
+        finally { URL.revokeObjectURL(objectUrl); }
+    }
     const uploaded = await autoSyncToCloud(syncId || blob, async () => {
         const metadataUrl = blob.type.startsWith("video/") ? URL.createObjectURL(blob) : undefined;
         try {
@@ -34,6 +41,18 @@ export async function uploadMediaFile(input: string | Blob, prefix = "file", syn
     objectUrls.set(storageKey, url);
     const meta = blob.type.startsWith("video/") ? await readVideoMeta(url) : {};
     return { url, storageKey, bytes: blob.size, mimeType: blob.type || "application/octet-stream", ...meta };
+}
+
+// Shared canvases always use the authenticated server file store, never a personal provider.
+export async function uploadTeamCanvasFile(blob: Blob, token: string): Promise<UploadedFile> {
+    if (!token || useUserStore.getState().token !== token) throw new Error("登录状态已变化");
+    await ensureFileSession(token);
+    const form = new FormData();
+    form.append("file", blob, `canvas-${nanoid()}.${blob.type.split("/")[1]?.split(";")[0] || "bin"}`);
+    const response = await queueFileUpload(() => fetch("/api/v1/files", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form }));
+    const payload = await response.json() as { code: number; msg: string; data: UploadedFile };
+    if (!response.ok || payload.code !== 0 || !payload.data?.storageKey?.startsWith("server:") || payload.data.storageKey.startsWith("server:webdav:")) throw new Error(payload.msg || "团队媒体上传失败");
+    return { ...payload.data, url: `/api/files/${encodeURIComponent(payload.data.storageKey.slice(7))}/content` };
 }
 
 export async function uploadAssetMediaFile(file: File, prefix = "asset-media"): Promise<UploadedFile> {

@@ -17,7 +17,7 @@ func PublishCanvasProject(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	user, _ := service.UserFromContext(r.Context())
 	if err := service.SetProjectPublished(r.Context(), user, id, *request.Published); err != nil {
-		FailError(w, err)
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, true)

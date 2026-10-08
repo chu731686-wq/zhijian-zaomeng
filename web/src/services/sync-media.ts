@@ -16,9 +16,9 @@ function assertSession(token: string) {
     if (!token || useUserStore.getState().token !== token) throw new Error("登录状态已变化，请重新同步");
 }
 
-async function syncMedia(source: string, token: string, kind = "image"): Promise<SyncedMedia> {
+async function syncMedia(source: string, token: string, kind = "image", team = false): Promise<SyncedMedia> {
     assertSession(token);
-    const cacheKey = `infinite-canvas:uploaded:${accountScope(token)}:${source}`;
+    const cacheKey = `infinite-canvas:uploaded:${team ? "team:" : ""}${accountScope(token)}:${source}`;
     const existing = uploads.get(cacheKey);
     if (existing) return existing;
     const request = (async () => {
@@ -49,7 +49,7 @@ async function syncMedia(source: string, token: string, kind = "image"): Promise
             blob = await response.blob();
         }
         assertSession(token);
-        const uploaded = blob.type.startsWith("image/") || (kind === "image" && !blob.type.startsWith("video/") && !blob.type.startsWith("audio/"))
+        const uploaded = team ? await media.uploadTeamCanvasFile(blob, token) : blob.type.startsWith("image/") || (kind === "image" && !blob.type.startsWith("video/") && !blob.type.startsWith("audio/"))
             ? await images.uploadImage(blob, { token })
             : await media.uploadMediaBlob(blob, `media.${blob.type.split("/")[1]?.split(";")[0] || "bin"}`);
         assertSession(token);
@@ -62,15 +62,15 @@ async function syncMedia(source: string, token: string, kind = "image"): Promise
 }
 
 // Walk structured data; never replace substrings in user text or JSON strings.
-export async function syncMediaReferences<T>(input: T, token: string): Promise<T> {
+export async function syncMediaReferences<T>(input: T, token: string, team = false): Promise<T> {
     const replacements = new Map<string, string>();
     const failedExternalUrls = new Set<string>();
     async function syncSource(source: string, kind = "image"): Promise<SyncedMedia | null> {
         if (failedExternalUrls.has(source)) return null;
         try {
-            return await syncMedia(source, token, kind);
+            return await syncMedia(source, token, kind, team);
         } catch (error) {
-            if (!(error instanceof ExternalMediaDownloadError)) throw error;
+            if (team || !(error instanceof ExternalMediaDownloadError)) throw error;
             if (!failedExternalUrls.has(source)) {
                 failedExternalUrls.add(source);
                 let hostname = "未知域名";
@@ -105,7 +105,7 @@ export async function syncMediaReferences<T>(input: T, token: string): Promise<T
         const result: Record<string, unknown> = { ...record };
         const key = typeof record.storageKey === "string" ? record.storageKey : "";
         let uploaded: SyncedMedia | null = null;
-        if (key && !key.startsWith("server:")) uploaded = await syncSource(key, kind);
+        if (key && (!key.startsWith("server:") || team && key.startsWith("server:webdav:"))) uploaded = await syncSource(key, kind);
         const mediaKind = typeof record.dataUrl === "string" || typeof record.imageUrl === "string" || ["image", "image_url", "panorama", "video", "audio"].includes(kind) || typeof record.mimeType === "string" && /^(image|video|audio)\//.test(record.mimeType);
         if (!key && mediaKind) {
             const source = [record.content, record.dataUrl, record.url, record.imageUrl].find((item) => typeof item === "string" && /^(data:|blob:|https?:\/\/)/.test(item));
@@ -125,7 +125,7 @@ export async function syncMediaReferences<T>(input: T, token: string): Promise<T
         } else if (key.startsWith("server:") && !key.startsWith("server:webdav:")) {
             const url = `/api/files/${encodeURIComponent(key.slice(7))}/content`;
             for (const field of ["url", "dataUrl", "imageUrl", "content", "coverUrl"]) {
-                if (typeof record[field] === "string" && /^(blob:|data:)/.test(record[field] as string)) result[field] = url;
+                if (typeof record[field] === "string" && (/^(blob:|data:)/.test(record[field]) || team && /^(https?:\/\/|\/api\/files\/)/.test(record[field]))) result[field] = url;
             }
         }
         for (const [field, item] of Object.entries(result).sort(([a], [b]) => Number(["data", "metadata"].includes(b)) - Number(["data", "metadata"].includes(a)))) {

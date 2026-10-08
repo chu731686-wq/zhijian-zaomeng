@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { BetweenHorizontalStart, GalleryHorizontal, GalleryHorizontalEnd, Plus, Trash2 } from "lucide-react";
+import { BetweenHorizontalStart, FolderPlus, GalleryHorizontal, GalleryHorizontalEnd, Plus, Trash2 } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -36,7 +36,10 @@ export function CanvasNodeContextMenu({ menu, canCaptureVideoFrame, onClose, onC
                     <div className="my-1 border-t" style={{ borderColor: theme.toolbar.border }} />
                 </>
             ) : null}
-            {menu.type === "node" ? <MenuButton icon={<Plus className="size-4" />} label="复制" onClick={onDuplicate} /> : null}
+            {menu.type === "node" ? <>
+                <MenuButton icon={<FolderPlus className="size-4" />} label="放进团队资产库" onClick={() => { window.dispatchEvent(new CustomEvent("canvas:team-asset-request", { detail: { nodeId: menu.nodeId } })); onClose(); }} />
+                <MenuButton icon={<Plus className="size-4" />} label="复制" onClick={onDuplicate} />
+            </> : null}
             <MenuButton icon={<Trash2 className="size-4" />} label="删除" onClick={onDelete} danger />
         </div>
     );

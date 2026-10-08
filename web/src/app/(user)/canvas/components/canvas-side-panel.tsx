@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { App, Empty, Input, Modal, Pagination, Select, Spin } from "antd";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, ChevronRight, Clapperboard, Download, Eye, FileText, Group, Image as ImageIcon, Music2, Plus, Search, Settings2, Trash2, Type, Video, X } from "lucide-react";
+import { BookOpen, ChevronRight, Clapperboard, Download, Eye, FileText, FolderPlus, Group, Image as ImageIcon, Music2, Pencil, Plus, Search, Settings2, Trash2, Type, Video, X } from "lucide-react";
 import { motion } from "motion/react";
 
 import { imagePreviewUrl } from "@/services/image-storage";
@@ -15,6 +15,11 @@ import { cn } from "@/lib/utils";
 import { fetchAssetLibrary, type AssetLibraryItem } from "@/services/api/assets";
 import { fetchPrompts, type Prompt } from "@/services/api/prompts";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
+import { useUserStore } from "@/stores/use-user-store";
+import { getTeams, type Team } from "@/services/api/team";
+import { createTeamAsset, deleteTeamAsset, getTeamAssets, updateTeamAsset, type TeamAsset, type TeamAssetCategory } from "@/services/api/team-assets";
+import { uploadMediaFile } from "@/services/file-storage";
+import { uploadImage } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 import { CanvasNodeType, type CanvasNodeData } from "../types";
@@ -29,6 +34,8 @@ const PANEL_MIN_WIDTH = 220;
 const PANEL_MAX_WIDTH = 480;
 const ASSET_PAGE_SIZE = 12;
 const PROMPT_CACHE_TIME = 24 * 60 * 60 * 1000;
+const TEAM_ASSET_REQUEST_EVENT = "canvas:team-asset-request";
+const TEAM_ASSET_CATEGORIES: TeamAssetCategory[] = ["人物", "场景", "道具", "分集", "其他"];
 
 type PanelTab = "canvas" | "assets";
 
@@ -99,6 +106,17 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, open, width, onWidthCh
     const [mounted, setMounted] = useState(open);
     const [closing, setClosing] = useState(false);
     const [resizing, setResizing] = useState(false);
+    const [teamAssetSource, setTeamAssetSource] = useState<TeamAssetSource | null>(null);
+
+    useEffect(() => {
+        const handleRequest = (event: Event) => {
+            const nodeId = (event as CustomEvent<{ nodeId?: string }>).detail?.nodeId;
+            const node = nodes.find((item) => item.id === nodeId);
+            if (node) setTeamAssetSource(sourceFromNode(node));
+        };
+        window.addEventListener(TEAM_ASSET_REQUEST_EVENT, handleRequest);
+        return () => window.removeEventListener(TEAM_ASSET_REQUEST_EVENT, handleRequest);
+    }, [nodes]);
 
     useEffect(() => {
         if (open) {
@@ -130,38 +148,41 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, open, width, onWidthCh
         window.addEventListener("pointerup", onUp);
     };
 
-    if (!mounted) return null;
-
     return (
-        <motion.div
-            className="relative z-[60] flex h-full shrink-0"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: open ? width + 1 : 0, opacity: open ? 1 : 0 }}
-            transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
-            style={{ overflow: "clip", pointerEvents: closing ? "none" : undefined }}
-        >
-            <motion.aside
-                className="relative flex h-full shrink-0 flex-col overflow-hidden border-r"
-                initial={{ x: -48 }}
-                animate={{ x: closing ? -28 : 0 }}
-                transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
-                style={{ width, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
-                data-canvas-no-zoom
-            >
-                <div className="flex items-center gap-5 px-4 pt-3.5">
-                    <PanelTabButton label="画布" active={tab === "canvas"} theme={theme} onClick={() => setTab("canvas")} />
-                    <PanelTabButton label="素材库" active={tab === "assets"} theme={theme} onClick={() => setTab("assets")} />
-                </div>
-                <div className="mt-2 min-h-0 flex-1 overflow-hidden">
-                    {tab === "canvas" ? (
-                        <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} theme={theme} />
-                    ) : (
-                        <CanvasAssetsTab theme={theme} onClose={onClose} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} />
-                    )}
-                </div>
-                <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label="调整左侧面板宽度" />
-            </motion.aside>
-        </motion.div>
+        <>
+            {mounted ? (
+                <motion.div
+                    className="relative z-[60] flex h-full shrink-0"
+                    initial={{ width: 0, opacity: 0 }}
+                    animate={{ width: open ? width + 1 : 0, opacity: open ? 1 : 0 }}
+                    transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
+                    style={{ overflow: "clip", pointerEvents: closing ? "none" : undefined }}
+                >
+                    <motion.aside
+                        className="relative flex h-full shrink-0 flex-col overflow-hidden border-r"
+                        initial={{ x: -48 }}
+                        animate={{ x: closing ? -28 : 0 }}
+                        transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
+                        style={{ width, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                        data-canvas-no-zoom
+                    >
+                        <div className="flex items-center gap-5 px-4 pt-3.5">
+                            <PanelTabButton label="画布" active={tab === "canvas"} theme={theme} onClick={() => setTab("canvas")} />
+                            <PanelTabButton label="素材库" active={tab === "assets"} theme={theme} onClick={() => setTab("assets")} />
+                        </div>
+                        <div className="mt-2 min-h-0 flex-1 overflow-hidden">
+                            {tab === "canvas" ? (
+                                <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} theme={theme} />
+                            ) : (
+                                <CanvasAssetsTab theme={theme} onClose={onClose} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} onInsertAsset={onInsertAsset} onPutInTeamAsset={setTeamAssetSource} />
+                            )}
+                        </div>
+                        <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label="调整左侧面板宽度" />
+                    </motion.aside>
+                </motion.div>
+            ) : null}
+            <TeamAssetForm source={teamAssetSource} onClose={() => setTeamAssetSource(null)} />
+        </>
     );
 }
 
@@ -263,22 +284,25 @@ function CanvasNodesTab({ nodes, selectedNodeIds, onFocusNode, theme }: { nodes:
     );
 }
 
-const CanvasAssetsTab = memo(function CanvasAssetsTab({ theme, onClose, onAssetDragStart, onAssetDragEnd }: { theme: CanvasTheme; onClose: () => void; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {
+const CanvasAssetsTab = memo(function CanvasAssetsTab({ theme, onClose, onAssetDragStart, onAssetDragEnd, onInsertAsset, onPutInTeamAsset }: { theme: CanvasTheme; onClose: () => void; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void; onInsertAsset: (payload: InsertAssetPayload) => void; onPutInTeamAsset: (source: TeamAssetSource) => void }) {
+    const [activeTab, setActiveTab] = useState<"mine" | "team">("mine");
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-center justify-between px-4 pb-3 pt-1">
-                <h2 className="text-sm font-semibold">素材库</h2>
+                <div className="flex items-center gap-4"><button type="button" className="text-sm font-semibold" style={{ opacity: activeTab === "mine" ? 1 : 0.5 }} onClick={() => setActiveTab("mine")}>我的素材</button><button type="button" className="text-sm font-semibold" style={{ opacity: activeTab === "team" ? 1 : 0.5 }} onClick={() => setActiveTab("team")}>团队</button></div>
                 <button type="button" className="grid size-8 place-items-center rounded-lg opacity-60 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10" onClick={onClose} aria-label="关闭素材库"><X className="size-4" /></button>
             </div>
-            <MyAssetsTab theme={theme} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} />
+            {activeTab === "mine" ? <MyAssetsTab theme={theme} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} onPutInTeamAsset={onPutInTeamAsset} /> : <TeamAssetsTab theme={theme} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} onInsertAsset={onInsertAsset} />}
         </div>
     );
 });
 
-function MyAssetsTab({ theme, onAssetDragStart, onAssetDragEnd }: { theme: CanvasTheme; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {
+function MyAssetsTab({ theme, onAssetDragStart, onAssetDragEnd, onPutInTeamAsset }: { theme: CanvasTheme; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void; onPutInTeamAsset: (source: TeamAssetSource) => void }) {
     const assets = useAssetStore((state) => state.assets);
     const removeAsset = useAssetStore((state) => state.removeAsset);
     const { message } = App.useApp();
+    const token = useUserStore((state) => state.token);
+    const teamQuery = useQuery({ queryKey: ["canvas-team-assets-memberships", token], queryFn: () => getTeams(token), enabled: Boolean(token), retry: false });
     const [keyword, setKeyword] = useState("");
     const [type, setType] = useState<"all" | "image" | "video" | "character">("all");
     const [page, setPage] = useState(1);
@@ -313,14 +337,14 @@ function MyAssetsTab({ theme, onAssetDragStart, onAssetDragEnd }: { theme: Canva
                 {([{ label: "全部", value: "all" }, { label: "图片", value: "image" }, { label: "视频", value: "video" }, { label: "角色", value: "character" }] as const).map((option) => <button type="button" key={option.value} onClick={() => setType(option.value)} className="rounded-full px-3 py-1.5 text-xs font-medium transition" style={{ color: theme.node.text, background: type === option.value ? theme.toolbar.activeBg : "transparent", opacity: type === option.value ? 1 : 0.6 }}>{option.label}</button>)}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                {filtered.length ? <div className="grid grid-cols-2 gap-3 px-1 pt-1">{items.map((asset) => <AssetLibraryCard key={asset.id} asset={asset} theme={theme} onDelete={() => confirmRemove(asset)} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} />)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无素材" className="pt-16" />}
+                {filtered.length ? <div className="grid grid-cols-2 gap-3 px-1 pt-1">{items.map((asset) => <AssetLibraryCard key={asset.id} asset={asset} theme={theme} onDelete={() => confirmRemove(asset)} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} canPutInTeam={Boolean(teamQuery.data?.some((team) => team.role !== "viewer"))} onPutInTeam={() => onPutInTeamAsset(sourceFromAsset(asset))} />)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无素材" className="pt-16" />}
                 {filtered.length > ASSET_PAGE_SIZE ? <Pagination className="!mt-3 flex justify-center" size="small" current={page} pageSize={ASSET_PAGE_SIZE} total={filtered.length} showSizeChanger={false} onChange={setPage} /> : null}
             </div>
         </>
     );
 }
 
-function AssetLibraryCard({ asset, theme, onDelete, onAssetDragStart, onAssetDragEnd }: { asset: Asset; theme: CanvasTheme; onDelete: () => void; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {
+function AssetLibraryCard({ asset, theme, onDelete, onAssetDragStart, onAssetDragEnd, canPutInTeam, onPutInTeam }: { asset: Asset; theme: CanvasTheme; onDelete: () => void; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void; canPutInTeam: boolean; onPutInTeam: () => void }) {
     const imageUrl = asset.kind === "image" ? asset.data.dataUrl || asset.coverUrl : asset.coverUrl;
     const mediaUrl = asset.kind === "video" || asset.kind === "audio" ? asset.data.url : imageUrl;
     const dimensions = asset.kind === "image" || asset.kind === "video" ? `${asset.data.width}×${asset.data.height}` : asset.kind === "audio" ? "音频" : "文本";
@@ -349,11 +373,146 @@ function AssetLibraryCard({ asset, theme, onDelete, onAssetDragStart, onAssetDra
                 <div className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-full bg-black/60 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                     <a href={mediaUrl || "#"} download={asset.title} className="grid size-full place-items-center" aria-label={`下载${asset.title}`} onClick={(event) => { event.stopPropagation(); if (!mediaUrl) event.preventDefault(); }} onPointerDown={(event) => event.stopPropagation()}><Download className="size-3.5" /></a>
                 </div>
+                {canPutInTeam ? <button type="button" className="absolute bottom-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-black/60 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100" aria-label={`放进团队资产库：${asset.title}`} title="放进团队资产库" onClick={(event) => { event.stopPropagation(); onPutInTeam(); }} onPointerDown={(event) => event.stopPropagation()}><FolderPlus className="size-3.5" /></button> : null}
             </div>
             <div className="mt-2 line-clamp-2 min-h-10 break-words text-xs font-medium leading-5" style={{ color: theme.node.text }}>{asset.title || "未命名素材"}</div>
             <div className="truncate text-[11px] leading-4 opacity-50" style={{ color: theme.node.text }}>{dimensions} · {typeLabel}</div>
         </article>
     );
+}
+
+type TeamAssetSource = { kind: "text" | "image" | "video" | "audio"; name: string; url?: string; text?: string; storageKey?: string; category?: string };
+
+function sourceFromAsset(asset: Asset): TeamAssetSource {
+    if (asset.kind === "text") return { kind: "text", name: asset.title, text: asset.data.content, category: asset.category };
+    if (asset.kind === "image") return { kind: "image", name: asset.title, url: asset.data.dataUrl, storageKey: asset.data.storageKey, category: asset.category };
+    if (asset.kind === "video") return { kind: "video", name: asset.title, url: asset.data.url, storageKey: asset.data.storageKey, category: asset.category };
+    return { kind: "audio", name: asset.title, url: asset.data.url, storageKey: asset.data.storageKey, category: asset.category };
+}
+
+function sourceFromNode(node: CanvasNodeData): TeamAssetSource | null {
+    const meta = node.metadata || {};
+    if (node.type === CanvasNodeType.Text) return { kind: "text", name: node.title || "未命名节点", text: meta.content || meta.prompt || "" };
+    if (isCanvasImageNodeType(node.type) && typeof meta.content === "string" && meta.content) return { kind: "image", name: node.title || "未命名节点", url: meta.content, storageKey: meta.storageKey };
+    if (node.type === CanvasNodeType.Video && typeof meta.content === "string" && meta.content) return { kind: "video", name: node.title || "未命名节点", url: meta.content, storageKey: meta.storageKey };
+    if (node.type === CanvasNodeType.Audio && typeof meta.content === "string" && meta.content) return { kind: "audio", name: node.title || "未命名节点", url: meta.content, storageKey: meta.storageKey };
+    return null;
+}
+
+function TeamAssetForm({ source, onClose }: { source: TeamAssetSource | null; onClose: () => void }) {
+    const token = useUserStore((state) => state.token);
+    const { message } = App.useApp();
+    const [teams, setTeams] = useState<Team[]>([]);
+    const [teamId, setTeamId] = useState("");
+    const [category, setCategory] = useState<TeamAssetCategory>("其他");
+    const [name, setName] = useState("");
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        if (!source || !token) return;
+        setName(source.name || "未命名素材");
+        setCategory(TEAM_ASSET_CATEGORIES.includes(source.category as TeamAssetCategory) ? source.category as TeamAssetCategory : "其他");
+        void getTeams(token).then((items) => {
+            const writable = items.filter((team) => team.role !== "viewer");
+            setTeams(writable);
+            setTeamId((current) => writable.some((team) => team.id === current) ? current : writable[0]?.id || "");
+        }).catch((error) => message.error(error instanceof Error ? error.message : "团队加载失败"));
+    }, [message, source, token]);
+    const save = async () => {
+        if (!source || !teamId || !name.trim()) return;
+        setSaving(true);
+        try {
+            let fileUrl = source.url;
+            if (source.kind !== "text" && fileUrl && !source.storageKey?.startsWith("server:") && !isServerFileUrl(fileUrl)) {
+                if (source.kind === "image") fileUrl = (await uploadImage(fileUrl, { team: true, token })).url;
+                else fileUrl = (await uploadMediaFile(fileUrl, `team-${source.kind}`, undefined, token, true)).url;
+            }
+            await createTeamAsset(token, teamId, { kind: source.kind, name: name.trim(), category, ...(source.kind === "text" ? { text_content: source.text || "" } : { file_url: fileUrl || "" }) });
+            message.success("已放进团队资产库");
+            onClose();
+        } catch (error) { message.error(error instanceof Error ? error.message : "添加团队素材失败"); }
+        finally { setSaving(false); }
+    };
+    return <Modal title="放进团队资产库" open={Boolean(source)} onCancel={onClose} onOk={() => void save()} confirmLoading={saving} okText="添加" cancelText="取消" destroyOnHidden>
+        {source ? <div className="space-y-4 py-2">
+            {teams.length ? <label className="block space-y-1.5"><span className="text-xs text-muted-text">团队</span><Select className="w-full" value={teamId || undefined} placeholder="选择团队" options={teams.map((team) => ({ label: team.name, value: team.id }))} onChange={setTeamId} /></label> : <p className="text-sm text-muted-text">还没有团队，去首页『团队』里建一个</p>}
+            <label className="block space-y-1.5"><span className="text-xs text-muted-text">类别</span><Select className="w-full" value={category} options={TEAM_ASSET_CATEGORIES.map((item) => ({ label: item, value: item }))} onChange={setCategory} /></label>
+            <label className="block space-y-1.5"><span className="text-xs text-muted-text">名字</span><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} /></label>
+        </div> : null}
+    </Modal>;
+}
+
+function isServerFileUrl(url: string) { return url.startsWith("/api/files/") || url.includes("/api/files/"); }
+
+function TeamAssetsTab({ theme, onAssetDragStart, onAssetDragEnd, onInsertAsset }: { theme: CanvasTheme; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void; onInsertAsset: (payload: InsertAssetPayload) => void }) {
+    const token = useUserStore((state) => state.token);
+    const userId = useUserStore((state) => state.user?.id || "");
+    const { message } = App.useApp();
+    const [teams, setTeams] = useState<Team[]>([]);
+    const [teamId, setTeamId] = useState("");
+    const [category, setCategory] = useState<TeamAssetCategory | "">("");
+    const [assets, setAssets] = useState<TeamAsset[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [editing, setEditing] = useState<TeamAsset | null>(null);
+    const [editName, setEditName] = useState("");
+    const [editCategory, setEditCategory] = useState<TeamAssetCategory>("其他");
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        if (!token) return;
+        void getTeams(token).then((items) => { setTeams(items); setTeamId((current) => items.some((team) => team.id === current) ? current : items[0]?.id || ""); }).catch((error) => message.error(error instanceof Error ? error.message : "团队加载失败"));
+    }, [message, token]);
+    useEffect(() => {
+        if (!teamId || !token) { setAssets([]); return; }
+        setLoading(true);
+        void getTeamAssets(token, teamId, { category: category || undefined }).then(setAssets).catch((error) => { setAssets([]); message.error(error instanceof Error ? error.message : "团队素材加载失败"); }).finally(() => setLoading(false));
+    }, [category, message, teamId, token]);
+    const activeTeam = teams.find((team) => team.id === teamId);
+    const canAdd = activeTeam?.role !== "viewer";
+    const canManage = (asset: TeamAsset) => activeTeam?.role === "owner" || activeTeam?.role === "admin" || (activeTeam?.role === "editor" && asset.created_by === userId);
+    const toPayload = (asset: TeamAsset): InsertAssetPayload => asset.kind === "text"
+        ? { kind: "text", content: asset.text_content || "", title: asset.name }
+        : asset.kind === "image"
+          ? { kind: "image", dataUrl: asset.file_url || "", title: asset.name }
+          : asset.kind === "video"
+            ? { kind: "video", url: asset.file_url || "", title: asset.name }
+            : { kind: "audio", url: asset.file_url || "", title: asset.name };
+    const remove = async (asset: TeamAsset) => {
+        try { await deleteTeamAsset(token, teamId, asset.id); setAssets((current) => current.filter((item) => item.id !== asset.id)); message.success("已删除团队素材"); }
+        catch (error) { message.error(error instanceof Error ? error.message : "删除失败"); }
+    };
+    const saveEdit = async () => {
+        if (!editing || !editName.trim()) return;
+        setSaving(true);
+        try {
+            const updated = await updateTeamAsset(token, teamId, editing.id, { name: editName.trim(), category: editCategory });
+            setAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+            setEditing(null);
+        } catch (error) { message.error(error instanceof Error ? error.message : "修改失败"); }
+        finally { setSaving(false); }
+    };
+    return <div className="flex min-h-0 flex-1 flex-col">
+        {teams.length ? <div className="flex items-center gap-2 px-3 pb-2"><Select className="min-w-0 flex-1" size="small" value={teamId || undefined} options={teams.map((team) => ({ label: team.name, value: team.id }))} onChange={setTeamId} /><Select className="w-24" size="small" value={category} options={[{ label: "全部类别", value: "" }, ...TEAM_ASSET_CATEGORIES.map((item) => ({ label: item, value: item }))]} onChange={setCategory} /></div> : <div className="px-4 py-5 text-sm text-muted-text">还没有团队，去首页『团队』里建一个</div>}
+        {teamId ? <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">{loading ? <div className="flex justify-center pt-16"><Spin size="small" /></div> : assets.length ? <div className="grid grid-cols-2 gap-3 px-1 pt-1">{assets.map((asset) => <TeamAssetCard key={asset.id} asset={asset} theme={theme} canManage={canManage(asset)} onInsert={() => onInsertAsset(toPayload(asset))} onDragStart={() => onAssetDragStart(toPayload(asset))} onDragEnd={onAssetDragEnd} onEdit={() => { setEditing(asset); setEditName(asset.name); setEditCategory(asset.category); }} onDelete={() => void remove(asset)} />)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无团队素材" className="pt-16" />}</div> : null}
+        {activeTeam && canAdd ? <div className="px-3 pb-2 text-xs text-muted-text">可从节点右键菜单或「我的素材」加入团队资产库</div> : null}
+        <Modal title="编辑团队素材" open={Boolean(editing)} onCancel={() => setEditing(null)} onOk={() => void saveEdit()} confirmLoading={saving} okText="保存" cancelText="取消" destroyOnHidden>
+            <div className="space-y-4 py-2"><Input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={120} /><Select className="w-full" value={editCategory} options={TEAM_ASSET_CATEGORIES.map((item) => ({ label: item, value: item }))} onChange={setEditCategory} /></div>
+        </Modal>
+    </div>;
+}
+
+function TeamAssetCard({ asset, theme, canManage, onInsert, onDragStart, onDragEnd, onEdit, onDelete }: { asset: TeamAsset; theme: CanvasTheme; canManage: boolean; onInsert: () => void; onDragStart: () => void; onDragEnd: () => void; onEdit: () => void; onDelete: () => void }) {
+    const mediaUrl = asset.file_url || "";
+    const typeLabel = asset.kind === "image" ? "图片" : asset.kind === "video" ? "视频" : asset.kind === "audio" ? "音频" : "文本";
+    return <article draggable onClick={onInsert} onDragStart={(event) => { event.dataTransfer.setData(CANVAS_ASSET_DRAG_TYPE, "asset"); event.dataTransfer.effectAllowed = "copy"; onDragStart(); }} onDragEnd={onDragEnd} className="group min-w-0 cursor-grab active:cursor-grabbing" title={`${asset.name} · ${asset.category}`}>
+        <div className="relative aspect-square overflow-hidden rounded-lg" style={{ background: theme.node.preview }}>
+            {asset.kind === "image" && mediaUrl ? <img decoding="async" src={imagePreviewUrl(mediaUrl)} alt={asset.name} className="size-full object-contain" draggable={false} /> : null}
+            {asset.kind === "video" && mediaUrl ? <video src={`${mediaUrl}#t=0.1`} muted playsInline preload="metadata" className="size-full object-contain" /> : null}
+            {asset.kind === "audio" ? <span className="grid size-full place-items-center"><Music2 className="size-8 opacity-45" /></span> : null}
+            {asset.kind === "text" ? <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-3 text-xs leading-5 opacity-80">{asset.text_content}</div> : null}
+            {canManage ? <div className="absolute right-1.5 top-1.5 flex gap-1"><button type="button" className="grid size-7 place-items-center rounded-full bg-black/60 text-white" aria-label={`改名或分类：${asset.name}`} onClick={(event) => { event.stopPropagation(); onEdit(); }} onPointerDown={(event) => event.stopPropagation()}><Pencil className="size-3.5" /></button><button type="button" className="grid size-7 place-items-center rounded-full bg-black/60 text-white" aria-label={`删除${asset.name}`} onClick={(event) => { event.stopPropagation(); onDelete(); }} onPointerDown={(event) => event.stopPropagation()}><Trash2 className="size-3.5" /></button></div> : null}
+        </div>
+        <div className="mt-2 line-clamp-2 min-h-10 break-words text-xs font-medium leading-5" style={{ color: theme.node.text }}>{asset.name || "未命名素材"}</div>
+        <div className="truncate text-[11px] leading-4 opacity-50" style={{ color: theme.node.text }}>{asset.category} · {typeLabel}</div>
+    </article>;
 }
 
 function LibraryAssetsTab({ theme, onAssetDragStart, onAssetDragEnd }: { theme: CanvasTheme; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {

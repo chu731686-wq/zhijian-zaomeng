@@ -1,11 +1,12 @@
 "use client";
+import { useCanvasModelConfig } from "@/app/(user)/canvas/hooks/use-canvas-model-config";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowUp, Brain, Check, Cpu, Globe, FolderOpen, ImageIcon, Menu, Square, Upload, Video, X } from "lucide-react";
 import { Button, Dropdown, Popover, Select, Tooltip } from "antd";
 
 import { canvasThemes } from "@/lib/canvas-theme";
-import { filterModelsByCapability, normalizeLocalChannels, resolveModelForCapability, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { filterModelsByCapability, normalizeLocalChannels, resolveModelForCapability, selectableModelsByCapability, useConfigStore } from "@/stores/use-config-store";
 import { isWorkflowProtocol } from "@/lib/model-channel";
 import { useWebSearchPreference } from "@/stores/use-web-search-store";
 import { fetchWebSearchSettings } from "@/services/api/web-search";
@@ -64,7 +65,7 @@ export function CanvasAssistantComposer({
     onPasteImage,
 }: CanvasAssistantComposerProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const effectiveConfig = useEffectiveConfig();
+    const effectiveConfig = useCanvasModelConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const [modelPanelOpen, setModelPanelOpen] = useState(false);
     const selectableTextModels = useMemo(() => selectableModelsByCapability(effectiveConfig, "text"), [effectiveConfig]);
@@ -73,16 +74,16 @@ export function CanvasAssistantComposer({
     const resolvedTextModel = resolveModelForCapability(effectiveConfig, agentConfig.textModel, "text");
     const resolvedImageModel = resolveModelForCapability(effectiveConfig, agentConfig.imageModel, "image");
     const resolvedVideoModel = resolveModelForCapability(effectiveConfig, agentConfig.videoModel, "video");
-    const channels = useMemo(() => (effectiveConfig.channelMode === "remote"
+    const channels = useMemo(() => [...(effectiveConfig.channelMode === "remote"
         ? effectiveConfig.publicChannels
-        : normalizeLocalChannels(effectiveConfig)).filter((channel) => channel.id && !isWorkflowProtocol(channel.protocol || "")), [effectiveConfig]);
+        : normalizeLocalChannels(effectiveConfig)), ...(effectiveConfig.teamChannels || [])].filter((channel) => channel.id && !isWorkflowProtocol(channel.protocol || "")), [effectiveConfig]);
     const modelOptions = (capability: "text" | "image" | "video", selectable: string[], selectedModel: string, selectedChannelId?: string) => {
         const allowed = new Set(selectable);
         const channelOptions = channels.flatMap((channel) => {
             const models = filterModelsByCapability(channel.models || [], capability, channel.protocol || "").filter((model) => allowed.has(model));
             return models.length ? [{ channel, models }] : [];
         });
-        const selectedChannel = channelOptions.find(({ channel }) => channel.id === selectedChannelId)?.channel || channelOptions.find(({ models }) => models.includes(selectedModel))?.channel;
+        const selectedChannel = channelOptions.find(({ channel }) => channel.id === selectedChannelId)?.channel || (selectedChannelId?.startsWith("team:") ? undefined : channelOptions.find(({ models }) => models.includes(selectedModel))?.channel);
         const selectedModels = channelOptions.find(({ channel }) => channel.id === selectedChannel?.id)?.models || [];
         return {
             channels: channelOptions,
@@ -188,7 +189,10 @@ export function CanvasAssistantComposer({
                                                 virtual={false}
                                                 optionFilterProp="label"
                                                 value={selection.channelId}
-                                                options={selection.channels.map(({ channel }) => ({ value: channel.id, label: channel.name || "未命名接口" }))}
+                                                options={[
+                                                    ...selection.channels.filter(({ channel }) => !channel.id?.startsWith("team:")).map(({ channel }) => ({ value: channel.id, label: channel.name || "未命名接口" })),
+                                                    ...(selection.channels.some(({ channel }) => channel.id?.startsWith("team:")) ? [{ label: `团队：${effectiveConfig.teamContext?.teamName}`, options: selection.channels.filter(({ channel }) => channel.id?.startsWith("team:")).map(({ channel }) => ({ value: channel.id, label: channel.name })) }] : []),
+                                                ]}
                                                 placeholder="接口"
                                                 popupMatchSelectWidth={false}
                                                 classNames={{ popup: { root: "assistant-model-popup" } }}

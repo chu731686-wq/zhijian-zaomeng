@@ -31,6 +31,9 @@ type CanvasImageTaskCreateInput struct {
 }
 
 func CreateCanvasImageTask(input CanvasImageTaskCreateInput) (model.CanvasImageTask, error) {
+	if err := AuthorizeCanvasGeneration(strings.TrimSpace(input.UserID), normalizeCanvasImageTaskSource(input.Source), strings.TrimSpace(input.SourceID)); err != nil {
+		return model.CanvasImageTask{}, err
+	}
 	current := now()
 	task := model.CanvasImageTask{
 		ID:              firstVideoTaskValue(input.ClientTaskID, "canvas_image_task_"+uuid.NewString()),
@@ -105,6 +108,33 @@ func DeleteUserCanvasTasks(userID string, sourceID string, nodeIDs []string) err
 }
 
 func SaveCanvasImageTask(task model.CanvasImageTask) (model.CanvasImageTask, error) {
+	if task.Status == "completed" && task.StorageKey == "" {
+		urls := task.ImageURLs
+		if len(urls) == 0 {
+			urls = []string{task.ImageURL}
+		}
+		for i, raw := range urls {
+			object, shared, err := persistTeamMedia(task.UserID, task.Source, task.SourceID, raw, task.MimeType)
+			if err != nil {
+				task.Status = "failed"
+				task.Error = "团队生成文件保存失败"
+				task.ErrorDetail = err.Error()
+				break
+			}
+			if shared {
+				urls[i] = object.URL
+				if i == 0 {
+					task.ImageURL = object.URL
+					task.StorageKey = object.StorageKey
+					task.MimeType = object.MimeType
+					task.Bytes = object.Bytes
+				}
+			}
+		}
+		if len(task.ImageURLs) > 0 {
+			task.ImageURLs = urls
+		}
+	}
 	task.UpdatedAt = now()
 	return repository.UpdateCanvasImageTask(task)
 }

@@ -152,7 +152,7 @@ func ShowcaseCanvasProjects() ([]model.CanvasProject, error) {
 	var projects []model.CanvasProject
 	err = db.Table("canvas_projects").Select("canvas_projects.*").
 		Joins("JOIN users ON users.id = canvas_projects.user_id").
-		Where("canvas_projects.published = ? AND canvas_projects.deleted_at = '' AND users.role = ? AND users.status = ?", true, model.UserRoleAdmin, model.UserStatusActive).
+		Where("canvas_projects.published = ? AND canvas_projects.team_id IS NULL AND canvas_projects.deleted_at = '' AND users.role = ? AND users.status = ?", true, model.UserRoleAdmin, model.UserStatusActive).
 		Order("canvas_projects.updated_at DESC").Find(&projects).Error
 	return projects, err
 }

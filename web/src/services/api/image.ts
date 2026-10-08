@@ -1,3 +1,4 @@
+import { isTeamConfig, resolveTeamRequestURL, teamRequestHeaders } from "./team-proxy";
 import axios from "axios";
 
 import { isMiniMaxChannel, miniMaxModels } from "@/lib/minimax-video";
@@ -252,7 +253,7 @@ function applyAPIMartImageParams(body: Record<string, unknown>, config: AiConfig
 }
 
 function directImageProviderForConfig(config: AiConfig) {
-    const channel = config.channelMode === "remote"
+    const channel = config.channelMode === "remote" && !isTeamConfig(config)
         ? config.publicChannels.find((item) => item.id === channelIdForActiveModel(config)) || config.publicChannels.find((item) => item.models?.includes(config.model))
         : localChannelForActiveModel(config);
     return directAIProviderForImageChannel(channel?.protocol || channelProtocolForConfig(config), channel?.baseUrl || config.baseUrl || "");
@@ -545,6 +546,7 @@ function withPromptGuard(config: AiConfig, prompt: string) {
 }
 
 function usesAccountProxy(config: AiConfig) {
+    if (isTeamConfig(config)) return false;
     const token = useUserStore.getState().token;
     return config.channelMode === "remote" || (config.channelMode === "local" && Boolean(token));
 }
@@ -552,10 +554,11 @@ function usesAccountProxy(config: AiConfig) {
 export function aiApiUrl(config: AiConfig, path: string) {
     if (usesAccountProxy(config)) return `/api/v1${path}`;
     const channel = localChannelForActiveModel(config);
-    return buildApiUrl(channel?.baseUrl || config.baseUrl, path);
+    return resolveTeamRequestURL(config, buildApiUrl(channel?.baseUrl || config.baseUrl, path));
 }
 
 export function aiHeaders(config: AiConfig, contentType?: string) {
+    if (isTeamConfig(config)) return { ...teamRequestHeaders(contentType), ...modelChannelAttributionHeaders(channelProtocolForConfig(config)) };
     const token = useUserStore.getState().token;
     if (config.channelMode === "remote" && !token) throw new Error("请先登录后再使用云端渠道");
     if (config.channelMode === "remote") {
@@ -586,7 +589,7 @@ export function refreshRemoteUser(config: AiConfig) {
 }
 
 async function writeLocalAICallLog(config: AiConfig, endpoint: string, startedAt: number, status: number, timeoutSeconds: number, requestBody: string, responseBody: string, error: string) {
-    if (config.channelMode !== "local" || usesAccountProxy(config)) return;
+    if (isTeamConfig(config) || config.channelMode !== "local" || usesAccountProxy(config)) return;
     const token = useUserStore.getState().token;
     if (!token) return;
     const channel = localChannelForActiveModel(config);
@@ -1312,7 +1315,7 @@ async function requestGeminiImageSingle(config: AiConfig, prompt: string, refere
         body,
         params.timeoutSeconds,
         () => requestWithTransientRetry(() => withTimeout(params.timeoutSeconds, (signal) => fetch(
-            proxy ? `/api/v1${references.length ? "/images/edits" : "/images/generations"}` : geminiActionUrl(channel?.baseUrl || config.baseUrl, config.model, "generateContent"),
+            proxy ? `/api/v1${references.length ? "/images/edits" : "/images/generations"}` : resolveTeamRequestURL(config, geminiActionUrl(channel?.baseUrl || config.baseUrl, config.model, "generateContent")),
             { method: "POST", headers: proxy ? aiHeaders(config, "application/json") : geminiDirectHeaders(config), body: JSON.stringify(nativeBody), signal },
         ))),
         async (response) => {
@@ -1385,7 +1388,7 @@ async function requestGeminiText(config: AiConfig, messages: ChatCompletionMessa
     const body = await createGeminiTextBody(config, withSystemMessage(config, messages));
     const proxy = usesAccountProxy(config);
     const channel = localChannelForActiveModel(config);
-    const response = await fetch(proxy ? "/api/v1/chat/completions" : geminiActionUrl(channel?.baseUrl || config.baseUrl, config.model, "streamGenerateContent"), {
+    const response = await fetch(proxy ? "/api/v1/chat/completions" : resolveTeamRequestURL(config, geminiActionUrl(channel?.baseUrl || config.baseUrl, config.model, "streamGenerateContent")), {
         method: "POST",
         headers: proxy ? aiHeaders(config, "application/json") : geminiDirectHeaders(config),
         body: JSON.stringify(proxy ? body : withoutModel(body)),

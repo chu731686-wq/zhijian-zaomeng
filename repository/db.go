@@ -86,9 +86,20 @@ func DB() (*gorm.DB, error) {
 			&model.CanvasImageTask{},
 			&model.CanvasAudioTask{},
 			&model.CanvasProject{},
+			&model.Team{},
+			&model.TeamMember{},
+			&model.TeamInvite{},
+			&model.TeamAsset{},
+			&model.TeamSharedChannel{},
+			&model.TeamAPIUsage{},
+			&model.CanvasChange{},
 			&model.ComfyBridge{},
 			&model.ComfyBridgeRequest{},
 		)
+		if dbErr == nil {
+			// GORM generates parameterized SQL supported by SQLite and Postgres.
+			dbErr = db.Model(&model.TeamMember{}).Where("role = ?", "member").Update("role", "editor").Error
+		}
 	})
 	return db, dbErr
 }

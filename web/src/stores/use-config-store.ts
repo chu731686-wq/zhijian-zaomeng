@@ -29,6 +29,8 @@ export type VideoElementReference = { id: string; kind: "image" | "video" | "aud
 export type VideoElementItem = { name: string; description: string; references: VideoElementReference[] };
 
 export type AiConfig = {
+    teamContext?: { canvasId: string; teamId: string; teamName: string };
+    teamChannels?: LocalModelChannel[];
     channelMode: "remote" | "local";
     baseUrl: string;
     apiKey: string;
@@ -368,21 +370,23 @@ export function filterChannelModelsByCapability(channels: Array<{ protocol?: Loc
 export function selectableModelsByCapability(config: AiConfig, capability?: ModelCapability) {
     if (!capability) return config.models;
     const channels = config.channelMode === "remote" ? config.publicChannels.map((channel) => ({ protocol: channel.protocol, models: channel.models || [] })) : normalizeLocalChannels(config);
-    return filterChannelModelsByCapability(channels, capability, config.models);
+    return [...new Set([...filterChannelModelsByCapability(channels, capability, config.models), ...filterChannelModelsByCapability(config.teamChannels || [], capability)])];
 }
 
 export function resolveModelForCapability(config: AiConfig, currentModel: string | undefined, capability: ModelCapability) {
     const configuredModel = capability === "image" ? config.imageModel : capability === "video" ? config.videoModel : capability === "audio" ? config.audioModel : config.textModel;
     const fallbackModel = capability === "image" ? defaultConfig.imageModel : capability === "video" ? defaultConfig.videoModel : capability === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
-    const selectableModels = selectableModelsByCapability(config, capability);
+    const selectableModels = selectableModelsByCapability({ ...config, teamChannels: undefined }, capability);
     const matches = (model: string | undefined) => Boolean(model && (selectableModels.length ? selectableModels.includes(model) : modelMatchesCapability(model, capability)));
-    if (matches(currentModel)) return currentModel!;
+    if (matches(currentModel) || currentModel && filterChannelModelsByCapability(config.teamChannels || [], capability).includes(currentModel)) return currentModel!;
     if (matches(configuredModel)) return configuredModel;
     return selectableModels[0] || fallbackModel;
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const channel = localChannelForActiveModel({ ...config, model });
+    if (channel?.id.startsWith("team:")) return Boolean(config.teamContext && model.trim() && channel.models.includes(model));
+    if (channelIdForActiveModel(config).startsWith("team:")) return false;
     return Boolean(model.trim()) && (config.channelMode === "remote" || Boolean(channel?.baseUrl.trim() && channel?.apiKey.trim()));
 }
 
@@ -551,6 +555,9 @@ export function normalizeLocalChannels(config: Partial<AiConfig>): LocalModelCha
 }
 
 export function channelIdForActiveModel(config: AiConfig) {
+    if (config.activeChannelId?.startsWith("team:")) return config.activeChannelId;
+    const explicitId = config.model === config.imageModel ? config.imageChannelId : config.model === config.videoModel ? config.videoChannelId : config.model === config.audioModel ? config.audioChannelId : config.textChannelId;
+    if (!config.activeChannelId && explicitId?.startsWith("team:")) return explicitId;
     const channels = (config.channelMode === "remote" ? config.publicChannels : normalizeLocalChannels(config)).filter((channel) => !isWorkflowProtocol(channel.protocol || ""));
     const selectedChannelId = config.model === config.imageModel ? config.imageChannelId : config.model === config.videoModel ? config.videoChannelId : config.model === config.audioModel ? config.audioChannelId : config.model === config.textModel ? config.textChannelId : "";
     const selectedChannel = channels.find((channel) => channel.id === selectedChannelId);
@@ -571,12 +578,16 @@ export function channelIdForActiveModel(config: AiConfig) {
 }
 
 export function localChannelForActiveModel(config: AiConfig) {
+    const teamId = channelIdForActiveModel(config);
+    if (teamId.startsWith("team:")) return config.teamChannels?.find((channel) => channel.id === teamId);
+
     const channels = normalizeLocalChannels(config).filter((channel) => !isWorkflowProtocol(channel.protocol));
     const preferredId = channelIdForActiveModel(config);
     return channels.find((channel) => channel.id === preferredId && channel.models.includes(config.model)) || channels.find((channel) => channel.models.includes(config.model)) || channels.find((channel) => channel.id === preferredId) || channels[0];
 }
 
 export function channelProtocolForConfig(config: AiConfig): LocalModelChannel["protocol"] {
+    if (channelIdForActiveModel(config).startsWith("team:")) return localChannelForActiveModel(config)?.protocol || "openai";
     const channel = config.channelMode === "remote"
         ? config.publicChannels.find((item) => item.id === channelIdForActiveModel(config)) || config.publicChannels.find((item) => !isWorkflowProtocol(item.protocol || ""))
         : localChannelForActiveModel(config);

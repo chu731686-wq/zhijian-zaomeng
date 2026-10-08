@@ -1,3 +1,4 @@
+import { isTeamConfig, teamRequestHeaders } from "@/services/api/team-proxy";
 import { channelProtocolForConfig, localChannelForActiveModel, type AiConfig } from "@/stores/use-config-store";
 
 export const GEMINI_PROTOCOL = "gemini" as const;
@@ -34,6 +35,7 @@ export function geminiOperationUrl(baseUrl: string, operation: string) {
 }
 
 export function geminiDirectHeaders(config: AiConfig) {
+    if (isTeamConfig(config)) return teamRequestHeaders("application/json");
     return {
         "Content-Type": "application/json",
         "x-goog-api-key": localChannelForActiveModel(config)?.apiKey || config.apiKey,

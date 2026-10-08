@@ -66,12 +66,16 @@ try {
 }
 const username = process.env.E2E_USERNAME || credentials.username || "qatester";
 const password = process.env.E2E_PASSWORD || credentials.password;
+const username2 = process.env.E2E_USERNAME2 || credentials.username2;
+const password2 = process.env.E2E_PASSWORD2 || credentials.password2 || password;
 const modifier = process.platform === "darwin" ? "Meta" : "Control";
 const results = [];
 const panelSamples = {};
 const runtimeErrors = [];
 let browser,
     context,
+    contextB,
+    pageB,
     page,
     projectId,
     projectTitle,
@@ -80,6 +84,7 @@ let browser,
 let preparationErrors = null;
 const createdProjects = [];
 const remainingProjectIds = [];
+let teamId, teamName, teamProjectId, teamProjectTitle, memberBId, teamInviteUrl;
 let image, text;
 function crc32(data) {
     let crc = 0xffffffff;
@@ -441,6 +446,82 @@ async function prepareWithRetries() {
         }
     }
     throw new Error(`准备步骤重试 2 次后仍失败：${clean(lastError?.message || "未知错误")}`);
+}
+async function authToken(targetPage) {
+    return targetPage.evaluate(() => {
+        const persisted = localStorage.getItem("infinite-canvas-auth-token-v1");
+        return persisted ? JSON.parse(persisted)?.state?.token : "";
+    });
+}
+async function collabRequest(targetPage, method, path, data) {
+    const token = await authToken(targetPage);
+    assert(token, "团队协作页面未能读取登录令牌");
+    const response = await targetPage.request.fetch(new URL(`/api/v1${path}`, baseURL).href, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, ...(data ? { "Content-Type": "application/json" } : {}) },
+        ...(data ? { data } : {}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    assert(response.ok() && payload.code === 0, `${method} ${path} 失败：${payload.msg || response.status()}`);
+    return payload.data;
+}
+async function ensureSecondAccount() {
+    if (!username2 || !password2) throw new Skip("未配置第二账号，团队协作检查跳过");
+    if (pageB && !pageB.isClosed()) return;
+    contextB = await browser.newContext({ viewport: { width: 1600, height: 1000 }, reducedMotion: "no-preference" });
+    pageB = await contextB.newPage();
+    pageB.setDefaultTimeout(8000);
+    pageB.setDefaultNavigationTimeout(20000);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        await pageB.goto(`${baseURL}/login?redirect=/canvas`, { waitUntil: "networkidle" });
+        if (new URL(pageB.url()).pathname !== "/login") break;
+        const usernameInput = pageB.getByLabel("用户名或邮箱", { exact: true });
+        await usernameInput.waitFor({ state: "visible" });
+        await waitOn(pageB, () => usernameInput.isEditable(), "第二账号用户名输入框未就绪");
+        await usernameInput.fill(username2);
+        await pageB.getByLabel("密码", { exact: true }).fill(password2);
+        await pageB.getByRole("button", { name: /^登\s*录$/ }).click();
+        await pageB.waitForURL((url) => url.pathname !== "/login" || url.href.includes("=on"), { timeout: 15000 });
+        if (!pageB.url().includes("=on")) break;
+        if (attempt === 1) throw new Error("第二账号登录连续两次触发原生表单提交");
+    }
+    await pageB.waitForURL((url) => url.pathname !== "/login", { timeout: 15000 });
+    assert(await authToken(pageB), "第二账号登录后未能读取令牌");
+}
+async function waitOn(targetPage, check, reason, timeout = 5000) {
+    const deadline = Date.now() + timeout;
+    let last;
+    do {
+        try { if (await check()) return; } catch (error) { last = error; }
+        await targetPage.waitForTimeout(40);
+    } while (Date.now() < deadline);
+    throw new Error(`${reason}${last ? `：${last.message}` : ""}`);
+}
+async function createTeamProject() {
+    await page.goto(`${baseURL}/canvas`, { waitUntil: "domcontentloaded" });
+    const main = page.getByRole("main");
+    const create = main.getByRole("button", { name: "新建项目", exact: true });
+    await create.click();
+    await page.getByRole("menuitem", { name: `放入「${teamName}」`, exact: true }).click();
+    try {
+        await page.waitForURL(/\/canvas\/[^/?]+$/, { timeout: 5000 });
+    } catch {
+        await page.goto(`${baseURL}/canvas`, { waitUntil: "domcontentloaded" });
+        const list = page.getByRole("main");
+        await list.getByRole("button", { name: teamName, exact: true }).click();
+        const newCard = list.locator("article").first();
+        await newCard.getByRole("button", { name: /^打开/ }).click();
+        await page.waitForURL(/\/canvas\/[^/?]+$/);
+    }
+    teamProjectId = new URL(page.url()).pathname.split("/").at(-1);
+    teamProjectTitle = `E2E 团队画布 ${Date.now()}`;
+    const titleButton = page.getByTitle("双击修改画布名称", { exact: true });
+    await titleButton.dblclick();
+    const titleInput = page.getByRole("textbox", { name: "画布名称", exact: true });
+    await titleInput.fill(teamProjectTitle);
+    await titleInput.press("Enter");
+    await eventually(async () => (await titleButton.innerText()) === teamProjectTitle, "团队测试画布命名失败");
+    createdProjects.push({ id: teamProjectId, title: teamProjectTitle });
 }
 async function deleteProject() {
     const projects = [...createdProjects];
@@ -1586,6 +1667,105 @@ const checks = [
             await page.getByRole("dialog").locator("img").waitFor({ state: "visible" });
         },
     ],
+    [
+        "㉚ 团队邀请可编辑成员加入",
+        async () => {
+            await ensureSecondAccount();
+            await page.goto(`${baseURL}/team`, { waitUntil: "domcontentloaded" });
+            teamName = `E2E 团队 ${Date.now()}`;
+            await page.getByPlaceholder("输入团队名称", { exact: true }).fill(teamName);
+            await page.getByRole("main").getByRole("button", { name: /^创\s*建$/ }).click();
+            await page.waitForURL(/\/team\/[^/?]+$/);
+            teamId = new URL(page.url()).pathname.split("/").at(-1);
+            const invite = await collabRequest(page, "POST", `/teams/${teamId}/invites`, { role: "editor" });
+            assert(invite.token, "没有生成邀请令牌");
+            teamInviteUrl = new URL(`/invite/team/${invite.token}`, baseURL).href;
+            await pageB.goto(teamInviteUrl, { waitUntil: "domcontentloaded" });
+            await pageB.getByText("加入身份：可编辑", { exact: true }).waitFor({ state: "visible" });
+            await pageB.getByRole("main").getByRole("button", { name: /^加\s*入\s*团\s*队$/ }).click();
+            await pageB.waitForURL(new RegExp(`/team/${teamId}$`));
+            const detail = await collabRequest(page, "GET", `/teams/${teamId}`);
+            const member = detail.members.find((item) => item.role === "editor");
+            assert(member, `A 的成员列表没有第二账号 ${username2}`);
+            assert.equal(member.role, "editor", "第二账号加入身份不是可编辑");
+            memberBId = member.user_id;
+            await page.reload({ waitUntil: "networkidle" });
+            await page.getByText(new RegExp(member.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).waitFor({ state: "visible" });
+        },
+        false,
+    ],
+    [
+        "㉛ 团队画布双向同步和在线头像",
+        async () => {
+            await ensureSecondAccount();
+            assert(teamId, "团队邀请检查未创建团队");
+            await createTeamProject();
+            await pageB.goto(`${baseURL}/canvas/${teamProjectId}`, { waitUntil: "domcontentloaded" });
+            await pageB.getByRole("navigation", { name: "画布工具" }).waitFor({ state: "visible" });
+            text = await add("文本", { x: 300, y: 180 });
+            await waitOn(pageB, async () => (await pageB.locator(`[data-node-id="${text}"]`).count()) === 1, "B 未在 5 秒内看到 A 的文本节点");
+            const beforeA = await rect(node(text));
+            const moveFrom = { x: beforeA.x + beforeA.width / 2, y: beforeA.y + 20 };
+            const moveTo = { x: moveFrom.x + 96, y: moveFrom.y + 64 };
+            await drag(moveFrom, moveTo);
+            const expected = await rect(node(text));
+            const nodeB = pageB.locator(`[data-node-id="${text}"]`);
+            await waitOn(pageB, async () => {
+                const actual = await nodeB.boundingBox();
+                return Boolean(actual && Math.abs(actual.x - expected.x) < 4 && Math.abs(actual.y - expected.y) < 4);
+            }, "B 未在 5 秒内同步 A 多步拖动后的位置");
+
+            const beforeCount = await pageB.locator("[data-node-id]").count();
+            await pageB.getByRole("navigation", { name: "画布工具" }).getByRole("button", { name: /^图\s*片$/ }).click();
+            await waitOn(pageB, async () => (await pageB.locator("[data-node-id]").count()) > beforeCount, "B 的图片节点未创建");
+            const imageId = await pageB.locator("[data-node-id]").evaluateAll((els) => els.map((el) => el.dataset.nodeId).at(-1));
+            await waitOn(page, async () => (await node(imageId).count()) === 1, "A 未在 5 秒内看到 B 的图片节点");
+
+            const online = page.getByLabel("在线成员", { exact: true });
+            await waitOn(page, async () => (await online.locator(":scope > span").count()) >= 2, "右上角在线头像少于 2 个");
+        },
+        false,
+    ],
+    [
+        "㉜ 团队 viewer 只读提示和工具栏",
+        async () => {
+            await ensureSecondAccount();
+            assert(teamProjectId && memberBId, "团队协作画布或成员未准备好");
+            await collabRequest(page, "PATCH", `/teams/${teamId}/members/${memberBId}`, { role: "viewer" });
+            await pageB.getByText("你只能查看这张画布", { exact: true }).waitFor({ state: "visible", timeout: 5000 });
+            const tools = pageB.getByRole("navigation", { name: "画布工具" });
+            await waitOn(pageB, async () => !(await tools.isVisible().catch(() => false)), "只读后左侧添加工具条仍可见");
+            await collabRequest(page, "PATCH", `/teams/${teamId}/members/${memberBId}`, { role: "editor" });
+            await pageB.getByRole("navigation", { name: "画布工具" }).waitFor({ state: "visible", timeout: 5000 });
+        },
+        false,
+    ],
+    [
+        "㉝ 团队资产库从 A 同步到 B",
+        async () => {
+            await ensureSecondAccount();
+            assert(teamProjectId, "团队协作画布未准备好");
+            const assetName = `E2E 团队资产 ${Date.now()}`;
+            const assetText = await add("文本", { x: 520, y: 300 });
+            await editText(assetText, assetName);
+            const box = await rect(node(assetText));
+            await page.mouse.click(box.x + box.width / 2, box.y + 20, { button: "right" });
+            await page.getByText("放进团队资产库", { exact: true }).last().click();
+            const dialog = page.getByRole("dialog").filter({ hasText: "放进团队资产库" }).last();
+            await dialog.waitFor({ state: "visible" });
+            await dialog.locator("input").last().fill(assetName);
+            await dialog.getByRole("button", { name: /^添\s*加$/ }).click();
+            await page.getByText("已放进团队资产库", { exact: true }).waitFor({ state: "visible" });
+
+            await togglePanel("素材库", true);
+            await pageB.getByLabel("画布控制", { exact: true }).getByRole("button", { name: "素材库", exact: true }).click();
+            const library = pageB.getByRole("main");
+            await library.getByRole("button", { name: /^团\s*队$/ }).waitFor({ state: "visible" });
+            await library.getByRole("button", { name: /^团\s*队$/ }).click();
+            await pageB.getByText(assetName, { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+        },
+        false,
+    ],
 ];
 
 await mkdir(screens, { recursive: true });
@@ -1638,7 +1818,7 @@ try {
     page.setDefaultNavigationTimeout(20000);
     const ready = await run("准备：登录或免登录并自建测试画布", prepareWithRetries);
     if (ready) {
-        for (const [name, action] of checks) await run(name, action, true);
+        for (const [name, action, resetFirst = true] of checks) await run(name, action, resetFirst);
     } else {
         for (const [name] of checks)
             await run(name, async () => {
@@ -1650,6 +1830,16 @@ try {
         throw new Error(!browser ? `本机 Chrome 启动失败；${/SIGABRT|EPERM/.test(String(error)) ? "SIGABRT/EPERM（执行环境限制）" : clean(error.message)}` : clean(error.message));
     });
 } finally {
+    if (teamId && page && !page.isClosed()) await run("清理：解散团队并归还团队画布", async () => {
+        const returned = await collabRequest(page, "DELETE", `/teams/${teamId}`);
+        assert(returned !== undefined, "解散团队接口未返回成功数据");
+        if (teamProjectId) {
+            const project = await collabRequest(page, "GET", `/canvas/projects/${teamProjectId}`);
+            assert(!project.team_id, "解散团队后画布没有回到 A 名下");
+        }
+        teamId = undefined;
+        if (contextB) await contextB.close();
+    });
     if (createdProjects.length && page && !page.isClosed()) await run("清理：删除本次测试画布", deleteProject);
     else if (createdProjects.length)
         await run("清理：删除本次测试画布", async () => {

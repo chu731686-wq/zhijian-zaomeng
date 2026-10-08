@@ -1,3 +1,4 @@
+import { isTeamConfig, resolveTeamRequestURL, teamRequestHeaders } from "./team-proxy";
 import axios from "axios";
 import { nanoid } from "nanoid";
 
@@ -38,6 +39,7 @@ type GeminiAudioResponse = { candidates?: Array<{ content?: { parts?: Array<{ in
 const grokTtsVoiceRequests = new Map<string, Promise<GrokTtsVoice[]>>();
 
 function usesAccountProxy(config: AiConfig) {
+    if (isTeamConfig(config)) return false;
     const token = useUserStore.getState().token;
     return config.channelMode === "remote" || (config.channelMode === "local" && Boolean(token));
 }
@@ -45,10 +47,11 @@ function usesAccountProxy(config: AiConfig) {
 function aiApiUrl(config: AiConfig, path: string) {
     if (usesAccountProxy(config)) return `/api/v1${path}`;
     const channel = localChannelForActiveModel(config);
-    return buildApiUrl(channel?.baseUrl || config.baseUrl, path);
+    return resolveTeamRequestURL(config, buildApiUrl(channel?.baseUrl || config.baseUrl, path));
 }
 
 function aiHeaders(config: AiConfig) {
+    if (isTeamConfig(config)) return { ...teamRequestHeaders("application/json"), ...modelChannelAttributionHeaders(channelProtocolForConfig(config)) };
     const token = useUserStore.getState().token;
     if (config.channelMode === "remote") {
         return {
@@ -100,7 +103,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, r
             const body = usesAccountProxy(config) ? { model, ...nativeBody } : nativeBody;
             const channel = localChannelForActiveModel(config);
             const response = await axios.post<GeminiAudioResponse>(
-                usesAccountProxy(config) ? "/api/v1/audio/speech" : geminiActionUrl(channel?.baseUrl || config.baseUrl, model, "generateContent"),
+                usesAccountProxy(config) ? "/api/v1/audio/speech" : resolveTeamRequestURL(config, geminiActionUrl(channel?.baseUrl || config.baseUrl, model, "generateContent")),
                 body,
                 { headers: usesAccountProxy(config) ? aiHeaders(config) : geminiDirectHeaders(config) },
             );
@@ -345,6 +348,7 @@ function decodeMiMoAudio(payload: MiMoAudioResponse, format: string) {
 
 function assertAudioConfig(config: AiConfig, model: string) {
     if (!model) throw new Error("请先配置音频模型");
+    if (isTeamConfig(config)) { resolveTeamRequestURL(config, localChannelForActiveModel(config)?.baseUrl || ""); return; }
     if (config.channelMode !== "local") return;
     if (!isMimoTtsModel(model) && !isGeminiConfig(config, model) && !isAutoDLConfig(config, model)) {
         if (!config.baseUrl.trim()) throw new Error("请先配置 Base URL");

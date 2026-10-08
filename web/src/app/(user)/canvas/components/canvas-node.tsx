@@ -1,4 +1,5 @@
 "use client";
+import { useCanvasModelConfig } from "@/app/(user)/canvas/hooks/use-canvas-model-config";
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -8,7 +9,7 @@ import { AlertCircle, Check, Circle, Clapperboard, ChevronRight, Image as ImageI
 
 import { imagePreviewUrl } from "@/services/image-storage";
 import styles from "./canvas-studio.module.css";
-import { useConfigStore, useEffectiveConfig, resolveModelForCapability, selectableModelsByCapability } from "@/stores/use-config-store";
+import { useConfigStore, resolveModelForCapability, selectableModelsByCapability } from "@/stores/use-config-store";
 import { canvasGroupColors, canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -25,6 +26,7 @@ const CanvasPanoramaViewer = dynamic(() => import("./canvas-panorama-viewer"), {
 
 type CanvasNodeProps = {
     readOnly?: boolean;
+    presenceColor?: string;
     onReadOnlySelect?: (node: CanvasNodeData) => void;
     data: CanvasNodeData;
     scale: number;
@@ -95,6 +97,7 @@ type NodeContentRendererProps = {
 
 export const CanvasNode = React.memo(function CanvasNode({
     readOnly = false,
+    presenceColor,
     onReadOnlySelect,
     data,
     scale,
@@ -136,7 +139,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onContextMenu,
 }: CanvasNodeProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const effectiveConfig = useEffectiveConfig();
+    const effectiveConfig = useCanvasModelConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const capability = data.type === CanvasNodeType.Video ? "video" : data.type === CanvasNodeType.Audio ? "audio" : data.type === CanvasNodeType.Text ? "text" : "image";
@@ -180,6 +183,13 @@ export const CanvasNode = React.memo(function CanvasNode({
     });
 
     useEffect(() => {
+        if (!readOnly) return;
+        setIsEditingTitle(false);
+        setIsEditingContent(false);
+        resizeRef.current.isResizing = false;
+    }, [readOnly]);
+
+    useEffect(() => {
         setTitleDraft(data.title || "");
     }, [data.title]);
 
@@ -213,8 +223,8 @@ export const CanvasNode = React.memo(function CanvasNode({
         const title = titleDraft.trim() || data.title || "未命名节点";
         setTitleDraft(title);
         setIsEditingTitle(false);
-        if (title !== data.title) onTitleChange(data.id, title);
-    }, [data.id, data.title, onTitleChange, titleDraft]);
+        if (!readOnly && title !== data.title) onTitleChange(data.id, title);
+    }, [data.id, data.title, onTitleChange, titleDraft, readOnly]);
 
     useEffect(() => {
         if (!isEditingTitle) return;
@@ -364,6 +374,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 width: data.width,
                 height: data.height,
                 transition: "box-shadow 200ms ease",
+                outline: presenceColor ? `1px solid ${presenceColor}` : undefined,
+                outlineOffset: presenceColor ? 3 : undefined,
                 contain: isGroup ? undefined : "layout style",
             }}
             onMouseEnter={() => {

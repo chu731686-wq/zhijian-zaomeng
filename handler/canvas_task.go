@@ -37,6 +37,10 @@ func CreateCanvasImageTask(w http.ResponseWriter, r *http.Request) {
 		Fail(w, err.Error())
 		return
 	}
+	if err := service.AuthorizeCanvasGeneration(user.ID, firstNonEmpty(source, "canvas"), sourceID); err != nil {
+		collabResult(w, nil, err)
+		return
+	}
 	modelName := readAIModelFromBody(body, contentType)
 	if strings.TrimSpace(modelName) == "" {
 		Fail(w, "缺少模型名称")
@@ -73,7 +77,7 @@ func CreateCanvasImageTask(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("create canvas image task failed: user=%s err=%v", user.ID, err)
-		Fail(w, "AI 接口请求失败")
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, service.CanvasImageTaskResponse(task))
@@ -190,6 +194,10 @@ func CreateCanvasAudioTask(w http.ResponseWriter, r *http.Request) {
 		Fail(w, err.Error())
 		return
 	}
+	if err := service.AuthorizeCanvasGeneration(user.ID, "canvas", sourceID); err != nil {
+		collabResult(w, nil, err)
+		return
+	}
 	modelName := readAIModelFromBody(body, contentType)
 	if strings.TrimSpace(modelName) == "" {
 		Fail(w, "缺少模型名称")
@@ -224,7 +232,7 @@ func CreateCanvasAudioTask(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("create canvas audio task failed: user=%s err=%v", user.ID, err)
-		Fail(w, "AI 接口请求失败")
+		canvasWriteError(w, err)
 		return
 	}
 	OK(w, service.CanvasAudioTaskResponse(task))

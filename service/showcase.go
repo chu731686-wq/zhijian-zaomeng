@@ -25,6 +25,15 @@ func SetProjectPublished(ctx context.Context, user model.AuthUser, id string, pu
 	if user.ID == "" || user.Role != model.UserRoleAdmin {
 		return errors.New("仅管理员可发布自己的画布")
 	}
+	collabMu.Lock()
+	defer collabMu.Unlock()
+	project, err := canvasAccess(user.ID, id)
+	if err != nil {
+		return err
+	}
+	if err := requireCollabPermission(project.CanEdit && project.UserID == user.ID); err != nil {
+		return err
+	}
 	return repository.SetCanvasProjectPublished(user.ID, strings.TrimSpace(id), published)
 }
 
@@ -168,7 +177,7 @@ func AuthorizeReadableStorageObject(ctx context.Context, id string) (model.Stora
 			return AuthorizeStorageObject(ctx, id)
 		}
 		owner, _, ownerErr := repository.GetUserByID(object.CreatedBy)
-		if ownerErr == nil && owner.Role == model.UserRoleAdmin && CanReadFileForShowcase(user, id) {
+		if CanReadFileForTeam(user, id) || (ownerErr == nil && owner.Role == model.UserRoleAdmin && CanReadFileForShowcase(user, id)) {
 			if IsLocalStorageObject(object) && !strings.HasPrefix(object.ObjectKey, object.CreatedBy+"/") {
 				return object, errors.New("文件路径无效")
 			}

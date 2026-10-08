@@ -1,4 +1,5 @@
 "use client";
+import { useCanvasModelConfig } from "@/app/(user)/canvas/hooks/use-canvas-model-config";
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { ArrowUp, Copy, LoaderCircle, Maximize2 } from "lucide-react";
@@ -8,7 +9,7 @@ import { ModelPicker } from "@/components/model-picker";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useAutoDLWorkflow } from "@/hooks/use-autodl-workflow";
 import { getAutoDLCapabilities, isAutoDLConfig } from "@/lib/autodl";
-import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { defaultConfig, resolveModelForCapability, useConfigStore, type AiConfig } from "@/stores/use-config-store";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -53,7 +54,7 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
 }
 
 function EditablePromptPanel({ readOnly = false, onViewReference, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], materialReferences = [], onAddMaterials, onRemoveMaterial, videoFrameOptions = [], videoResourceOptions = [], onDisconnectReference, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
-    const globalConfig = useEffectiveConfig();
+    const globalConfig = useCanvasModelConfig();
     const modelCosts = useConfigStore((state) => state.publicSettings?.modelChannel.modelCosts);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];

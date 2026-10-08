@@ -26,6 +26,9 @@ const workflowTaskTimeout = time.Hour
 var ErrWorkflowTaskNotFound = errors.New("工作流任务不存在")
 
 func CreateWorkflowTask(ctx context.Context, user model.AuthUser, input WorkflowRunInput) (result WorkflowTaskResult, err error) {
+	if err := AuthorizeCanvasGeneration(user.ID, input.Source, input.SourceID); err != nil {
+		return WorkflowTaskResult{}, err
+	}
 	user.DisplayName = firstNonEmpty(user.DisplayName, user.Username)
 	resolved, err := ResolveWorkflowForUser(user, input.Ref)
 	if err != nil {

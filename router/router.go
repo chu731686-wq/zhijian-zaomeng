@@ -50,6 +50,7 @@ func New() *gin.Engine {
 		handler.DeleteFile(c.Writer, c.Request, c.Param("id"))
 	})
 	v1 := api.Group("/v1", middleware.UserAuth)
+	registerTeamCollabRoutes(v1)
 	v1.POST("/canvas/projects/:id/publish", func(c *gin.Context) { handler.PublishCanvasProject(c.Writer, c.Request, c.Param("id")) })
 	v1.GET("/showcase", gin.WrapF(handler.ShowcaseProjects))
 	v1.GET("/showcase/:id", func(c *gin.Context) { handler.ShowcaseProject(c.Writer, c.Request, c.Param("id")) })
