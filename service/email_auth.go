@@ -86,7 +86,7 @@ func emailCodeHash(email, purpose, code string) string {
 }
 
 func SMTPConfigured() bool {
-	return strings.TrimSpace(config.Cfg.SMTPHost) != "" && strings.TrimSpace(config.Cfg.SMTPFrom) != ""
+	return brevoConfigured() || (strings.TrimSpace(config.Cfg.SMTPHost) != "" && strings.TrimSpace(config.Cfg.SMTPFrom) != "")
 }
 
 type EmailCodeDelivery struct {
@@ -141,7 +141,7 @@ func SendEmailCode(email, purpose, ip string) (EmailCodeDelivery, error) {
 	}
 	if err := sendAuthMail(email, plain, purpose); err != nil {
 		_ = repository.InvalidateEmailCode(code)
-		log.Printf("SMTP 验证码发送失败: %v", err)
+		log.Printf("邮件验证码发送失败: %v", err)
 		return result, authMessage("邮件发送失败，请联系管理员，60 秒后可重试")
 	}
 	return result, nil
@@ -262,6 +262,9 @@ func RevokeInvite(code string) error {
 
 func sendAuthMail(email, code, purpose string) error {
 	cfg := config.Cfg
+	if brevoConfigured() {
+		return sendBrevoMail(email, code, purpose)
+	}
 	from, err := mail.ParseAddress(cfg.SMTPFrom)
 	if err != nil {
 		return err

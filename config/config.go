@@ -20,6 +20,10 @@ type Config struct {
 	SMTPUser                   string `env:"SMTP_USER"`
 	SMTPPass                   string `env:"SMTP_PASS"`
 	SMTPFrom                   string `env:"SMTP_FROM"`
+	BrevoAPIKey                string `env:"BREVO_API_KEY"`
+	BrevoAPIBase               string `env:"BREVO_API_BASE" envDefault:"https://api.brevo.com"`
+	MailFrom                   string `env:"MAIL_FROM"`
+	MailFromName               string `env:"MAIL_FROM_NAME" envDefault:"指尖造梦"`
 	GoogleClientID             string `env:"GOOGLE_CLIENT_ID"`
 	GoogleClientSecret         string `env:"GOOGLE_CLIENT_SECRET"`
 	GoogleRedirectURL          string `env:"GOOGLE_REDIRECT_URL"`
