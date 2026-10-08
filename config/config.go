@@ -22,6 +22,9 @@ type Config struct {
 	SMTPFrom                   string `env:"SMTP_FROM"`
 	BrevoAPIKey                string `env:"BREVO_API_KEY"`
 	BrevoAPIBase               string `env:"BREVO_API_BASE" envDefault:"https://api.brevo.com"`
+	MailjetAPIKey              string `env:"MAILJET_API_KEY"`
+	MailjetSecretKey           string `env:"MAILJET_SECRET_KEY"`
+	MailjetAPIBase             string `env:"MAILJET_API_BASE" envDefault:"https://api.mailjet.com"`
 	MailFrom                   string `env:"MAIL_FROM"`
 	MailFromName               string `env:"MAIL_FROM_NAME" envDefault:"指尖造梦"`
 	GoogleClientID             string `env:"GOOGLE_CLIENT_ID"`

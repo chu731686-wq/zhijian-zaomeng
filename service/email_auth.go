@@ -86,7 +86,7 @@ func emailCodeHash(email, purpose, code string) string {
 }
 
 func SMTPConfigured() bool {
-	return brevoConfigured() || (strings.TrimSpace(config.Cfg.SMTPHost) != "" && strings.TrimSpace(config.Cfg.SMTPFrom) != "")
+	return brevoConfigured() || mailjetConfigured() || (strings.TrimSpace(config.Cfg.SMTPHost) != "" && strings.TrimSpace(config.Cfg.SMTPFrom) != "")
 }
 
 type EmailCodeDelivery struct {
@@ -264,6 +264,9 @@ func sendAuthMail(email, code, purpose string) error {
 	cfg := config.Cfg
 	if brevoConfigured() {
 		return sendBrevoMail(email, code, purpose)
+	}
+	if mailjetConfigured() {
+		return sendMailjetMail(email, code, purpose)
 	}
 	from, err := mail.ParseAddress(cfg.SMTPFrom)
 	if err != nil {
